@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "CTE Research Repository and Format Compliance System"
-    database_url: str = "sqlite:///./cte_repository.db"
+    database_url: str = Field("", validation_alias=AliasChoices("DATABASE_URL"))
     secret_key: str = Field("dev-secret-change-me", validation_alias=AliasChoices("JWT_SECRET", "SECRET_KEY"))
     access_token_expire_minutes: int = 480
     backend_cors_origins: str = Field(
