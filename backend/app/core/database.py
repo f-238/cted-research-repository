@@ -14,7 +14,14 @@ def normalize_database_url(url: str) -> str:
 
 
 database_url = normalize_database_url(settings.database_url or "sqlite:///./cte_repository.db")
-connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+is_postgres = database_url.startswith("postgresql")
+connect_args = (
+    {"prepare_threshold": None, "sslmode": "require"}
+    if is_postgres
+    else {"check_same_thread": False}
+    if database_url.startswith("sqlite")
+    else {}
+)
 engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
