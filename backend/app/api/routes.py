@@ -387,7 +387,8 @@ def review_submission(submission_id: int, payload: ReviewCreate, db: Session = D
         raise HTTPException(status_code=404, detail="Submission not found.")
     submission.status = payload.status
     db.add(ReviewRemark(submission_id=submission.id, reviewer_id=admin.id, status=payload.status, remarks=payload.remarks))
-    notify(db, submission.submitter_id, f"Research {payload.status}", payload.remarks, "/my-submissions")
+    if submission.submitter_id:
+        notify(db, submission.submitter_id, f"Research {payload.status}", payload.remarks, "/my-submissions")
     db.commit()
     return _submission_out(_submission_query(db).filter(ResearchSubmission.id == submission.id).first())
 
@@ -702,23 +703,33 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
         if admin_count <= 1:
             raise HTTPException(status_code=400, detail="You cannot delete the last remaining admin account.")
 
-    related_records = [
-        db.query(func.count(ResearchSubmission.id)).filter(ResearchSubmission.submitter_id == user.id).scalar() or 0,
-        db.query(func.count(AccomplishmentReport.id)).filter(AccomplishmentReport.owner_id == user.id).scalar() or 0,
-        db.query(func.count(ReviewRemark.id)).filter(ReviewRemark.reviewer_id == user.id).scalar() or 0,
-        db.query(func.count(Template.id)).filter(Template.uploaded_by_id == user.id).scalar() or 0,
-    ]
-    if any(related_records):
-        raise HTTPException(status_code=409, detail="This user has related records and cannot be deleted unless records are reassigned or removed.")
-
     profile_image_path = user.profile_image_path
     try:
-        db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)
+        db.query(ResearchSubmission).filter(ResearchSubmission.submitter_id == user.id).update(
+            {ResearchSubmission.submitter_id: None},
+            synchronize_session=False,
+        )
+        db.query(AccomplishmentReport).filter(AccomplishmentReport.owner_id == user.id).update(
+            {AccomplishmentReport.owner_id: None},
+            synchronize_session=False,
+        )
+        db.query(ReviewRemark).filter(ReviewRemark.reviewer_id == user.id).update(
+            {ReviewRemark.reviewer_id: None},
+            synchronize_session=False,
+        )
+        db.query(Template).filter(Template.uploaded_by_id == user.id).update(
+            {Template.uploaded_by_id: None},
+            synchronize_session=False,
+        )
+        db.query(Notification).filter(Notification.user_id == user.id).update(
+            {Notification.user_id: None},
+            synchronize_session=False,
+        )
         db.delete(user)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="This user has related records and cannot be deleted unless records are reassigned or removed.") from exc
+        raise HTTPException(status_code=409, detail="This user account could not be deleted because one or more related records could not be archived safely.") from exc
     if profile_image_path:
         delete_file(profile_image_path, bucket=get_settings().supabase_profile_images_bucket)
     return {"ok": True}

@@ -78,7 +78,7 @@ class SubmissionOut(BaseModel):
     mime_type: str | None = None
     file_size: int | None = None
     created_at: datetime
-    submitter: UserOut
+    submitter: UserOut | None = None
     course: CourseOut
     format_check: FormatCheckOut | None = None
 
@@ -173,7 +173,7 @@ class AccomplishmentOut(BaseModel):
     mime_type: str | None = None
     file_size: int | None = None
     created_at: datetime
-    owner: UserOut
+    owner: UserOut | None = None
 
     class Config:
         from_attributes = True

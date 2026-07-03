@@ -63,7 +63,7 @@ class ResearchSubmission(Base, TimestampMixin):
     mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     visible: Mapped[bool] = mapped_column(Boolean, default=True)
-    submitter_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    submitter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     submitter = relationship("User", back_populates="submissions")
     course = relationship("Course", back_populates="submissions")
@@ -89,7 +89,7 @@ class AccomplishmentReport(Base, TimestampMixin):
     original_filename: Mapped[Optional[str]] = mapped_column(String(260), nullable=True)
     mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     owner = relationship("User")
 
@@ -118,14 +118,14 @@ class Template(Base, TimestampMixin):
     mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    uploaded_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    uploaded_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class Notification(Base, TimestampMixin):
     __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(180))
     message: Mapped[str] = mapped_column(Text)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -137,7 +137,7 @@ class ReviewRemark(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     submission_id: Mapped[int] = mapped_column(ForeignKey("research_submissions.id"))
-    reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reviewer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(Enum(*SUBMISSION_VALUES, name="remark_status_enum"))
     remarks: Mapped[str] = mapped_column(Text)
 

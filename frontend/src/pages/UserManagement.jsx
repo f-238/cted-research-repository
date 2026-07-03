@@ -65,11 +65,11 @@ export default function UserManagement() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-[#071B4D]/50 px-4 backdrop-blur-sm">
           <div className="panel w-full max-w-md p-6">
             <h2 className="text-xl font-extrabold text-[#071B4D]">Delete User</h2>
-            <p className="mt-3 text-sm text-slate-600">Are you sure you want to permanently delete this user? This action cannot be undone.</p>
+            <p className="mt-3 text-sm text-slate-600">This will permanently remove this user account while preserving all submitted research records.</p>
             <p className="mt-3 text-sm font-bold text-[#071B4D]">{deleting.full_name}</p>
             <div className="mt-6 flex justify-end gap-3">
               <button className="btn-secondary" onClick={() => setDeleting(null)} disabled={deleteBusy}>Cancel</button>
-              <button className="btn-secondary border-red-200 text-red-700 hover:bg-red-50" onClick={remove} disabled={deleteBusy}>{deleteBusy ? "Deleting..." : "Delete Permanently"}</button>
+              <button className="btn-secondary border-red-200 text-red-700 hover:bg-red-50" onClick={remove} disabled={deleteBusy}>{deleteBusy ? "Deleting..." : "Delete User"}</button>
             </div>
           </div>
         </div>

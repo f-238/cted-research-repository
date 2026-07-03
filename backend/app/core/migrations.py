@@ -15,6 +15,7 @@ def run_startup_migrations(engine: Engine) -> None:
     table_names = inspector.get_table_names()
     _add_file_metadata_columns(engine, inspector, table_names)
     _add_user_profile_image_column(engine, inspector, table_names)
+    _make_user_references_nullable(engine, inspector, table_names)
 
     if not engine.url.get_backend_name().startswith("sqlite"):
         return
@@ -47,11 +48,11 @@ def run_startup_migrations(engine: Engine) -> None:
                 original_filename VARCHAR(260) NOT NULL,
                 file_type VARCHAR(20) NOT NULL,
                 visible BOOLEAN NOT NULL,
-                submitter_id INTEGER NOT NULL,
+                submitter_id INTEGER,
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME NOT NULL,
                 FOREIGN KEY(course_id) REFERENCES courses (id),
-                FOREIGN KEY(submitter_id) REFERENCES users (id)
+                FOREIGN KEY(submitter_id) REFERENCES users (id) ON DELETE SET NULL
             )
         """))
         legacy_rows = connection.execute(text("SELECT * FROM research_submissions_legacy")).mappings().all()
@@ -110,3 +111,40 @@ def _add_user_profile_image_column(engine: Engine, inspector, table_names: list[
         return
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE users ADD COLUMN profile_image_path VARCHAR(500)"))
+
+
+def _make_user_references_nullable(engine: Engine, inspector, table_names: list[str]) -> None:
+    references = [
+        ("research_submissions", "submitter_id"),
+        ("accomplishment_reports", "owner_id"),
+        ("review_remarks", "reviewer_id"),
+        ("notifications", "user_id"),
+        ("templates", "uploaded_by_id"),
+    ]
+    backend_name = engine.url.get_backend_name()
+    if not backend_name.startswith("postgresql"):
+        return
+
+    with engine.begin() as connection:
+        for table_name, column_name in references:
+            if table_name not in table_names:
+                continue
+            columns = {column["name"] for column in inspector.get_columns(table_name)}
+            if column_name not in columns:
+                continue
+            connection.execute(text(f"ALTER TABLE {_quote_identifier(table_name)} ALTER COLUMN {_quote_identifier(column_name)} DROP NOT NULL"))
+            for foreign_key in inspector.get_foreign_keys(table_name):
+                if foreign_key.get("referred_table") == "users" and foreign_key.get("constrained_columns") == [column_name]:
+                    constraint_name = foreign_key.get("name")
+                    if constraint_name:
+                        connection.execute(text(f"ALTER TABLE {_quote_identifier(table_name)} DROP CONSTRAINT IF EXISTS {_quote_identifier(constraint_name)}"))
+            connection.execute(text(f"ALTER TABLE {_quote_identifier(table_name)} DROP CONSTRAINT IF EXISTS {_quote_identifier(f'{table_name}_{column_name}_fkey')}"))
+            connection.execute(text(
+                f"ALTER TABLE {_quote_identifier(table_name)} "
+                f"ADD CONSTRAINT {_quote_identifier(f'{table_name}_{column_name}_fkey')} "
+                f"FOREIGN KEY ({_quote_identifier(column_name)}) REFERENCES users(id) ON DELETE SET NULL"
+            ))
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
