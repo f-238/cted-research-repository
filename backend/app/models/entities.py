@@ -47,6 +47,7 @@ class ResearchSubmission(Base, TimestampMixin):
     __tablename__ = "research_submissions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submission_type: Mapped[str] = mapped_column(String(40), default="research", index=True)
     title: Mapped[str] = mapped_column(String(260), index=True)
     authors: Mapped[str] = mapped_column(String(260))
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"))
@@ -75,6 +76,7 @@ class AccomplishmentReport(Base, TimestampMixin):
     __tablename__ = "accomplishment_reports"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_submission_id: Mapped[Optional[int]] = mapped_column(ForeignKey("research_submissions.id", ondelete="SET NULL"), nullable=True, unique=True)
     report_type: Mapped[str] = mapped_column(Enum(*ACCOMPLISHMENT_VALUES, name="accomplishment_enum"), index=True)
     title: Mapped[str] = mapped_column(String(260), index=True)
     researcher: Mapped[str] = mapped_column(String(260))

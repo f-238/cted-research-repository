@@ -58,6 +58,7 @@ export default function PendingReviews() {
                 <h2 className="font-semibold">{item.title}</h2>
                 <p className="text-sm text-slate-500">{item.authors} - {item.course.name} - School Year {item.school_year}</p>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
+                  <span>Type: {labelType(item.submission_type)}</span>
                   <span>Adviser: {item.adviser}</span>
                   <span>Submission Year: {item.submission_year}</span>
                   <span>Submitted: {new Date(item.created_at).toLocaleDateString()}</span>
@@ -68,7 +69,12 @@ export default function PendingReviews() {
             {viewing[item.id] && (
               <>
                 <p className="mt-3 text-sm text-slate-600">{item.abstract}</p>
-                {item.format_check && <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">{item.format_check.is_compliant ? "Format compliant" : item.format_check.warnings.join(" ")}</div>}
+                {item.format_check && (
+                  <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
+                    <p className="font-semibold">Format compliance: {formatStatus(item.format_check)}</p>
+                    {!item.format_check.is_compliant && <p className="mt-1">{item.format_check.warnings.join(" ")}</p>}
+                  </div>
+                )}
               </>
             )}
             <div className="mt-4 grid gap-3 md:grid-cols-[auto_auto_180px_1fr_auto]">
@@ -94,4 +100,17 @@ export default function PendingReviews() {
       </div>
     </>
   );
+}
+
+function labelType(value) {
+  return (value || "research").replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+function formatStatus(formatCheck) {
+  if (formatCheck?.is_compliant) return "Passed";
+  const warnings = (formatCheck?.warnings || []).join(" ").toLowerCase();
+  if (warnings.includes("missing imrad") || warnings.includes("more than 12") || warnings.includes("invalid paper") || warnings.includes("invalid font") || warnings.includes("line spacing is not double")) {
+    return "Failed";
+  }
+  return "Warning";
 }

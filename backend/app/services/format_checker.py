@@ -4,10 +4,7 @@ from docx import Document
 from pypdf import PdfReader
 
 REQUIRED_SECTIONS = [
-    "Title Page",
-    "Abstract",
     "Introduction",
-    "Review of Related Literature",
     "Methodology",
     "Results and Discussion",
     "Conclusion",
@@ -45,19 +42,32 @@ def check_docx(path: str) -> dict:
                 sizes.add(round(run.font.size.pt, 1))
 
     text = _docx_text(document).lower()
-    missing_sections = [section for section in REQUIRED_SECTIONS if section.lower() not in text]
+    page_count = getattr(document.core_properties, "pages", None)
+    if page_count:
+        summary["page_count"] = page_count
+        if page_count > 12:
+            warnings.append("More than 12 pages.")
+    missing_sections = []
+    for section in REQUIRED_SECTIONS:
+        aliases = [section.lower()]
+        if section == "Methodology":
+            aliases.append("methods")
+        if not any(alias in text for alias in aliases):
+            missing_sections.append(section)
     if missing_sections:
-        warnings.append("Missing required sections: " + ", ".join(missing_sections))
+        warnings.append("Missing IMRAD section: " + ", ".join(missing_sections))
     else:
-        passed.append("Required sections are present")
+        passed.append("IMRAD sections are present")
 
-    if fonts and not any("times new roman" in font.lower() for font in fonts):
-        warnings.append("Font style should be Times New Roman.")
+    has_tnr = any("times new roman" in font.lower() for font in fonts)
+    has_arial = any("arial" in font.lower() for font in fonts)
+    valid_size = (has_tnr and 12.0 in sizes) or (has_arial and 11.0 in sizes)
+    if fonts and not (has_tnr or has_arial):
+        warnings.append("Invalid font. Use Times New Roman or Arial.")
     else:
         passed.append("Font style appears compliant or inherited from style")
-
-    if sizes and 12.0 not in sizes:
-        warnings.append("Font size should be 12 pt.")
+    if sizes and not valid_size:
+        warnings.append("Invalid font size. Use Times New Roman 12 pt or Arial 11 pt.")
     else:
         passed.append("Font size appears compliant or inherited from style")
 
@@ -77,16 +87,16 @@ def check_docx(path: str) -> dict:
     page = (round(section.page_width.inches, 2), round(section.page_height.inches, 2))
     summary["page_size_inches"] = page
     if page not in [(8.5, 11.0), (8.27, 11.69)]:
-        warnings.append("Page size should be Letter or A4, based on school policy.")
+        warnings.append("Invalid paper size. Use Short/Letter or A4.")
     else:
         passed.append("Page size appears compliant")
 
     spacing_values = [p.paragraph_format.line_spacing for p in document.paragraphs if p.paragraph_format.line_spacing]
     summary["line_spacing_samples"] = [str(value) for value in spacing_values[:10]]
     if not spacing_values:
-        warnings.append("Line spacing could not be fully detected; verify it follows the template.")
+        warnings.append("Line spacing is not double or could not be fully detected.")
     elif not any(str(value) in {"2.0", "DOUBLE (2)"} or value == 2 for value in spacing_values):
-        warnings.append("Line spacing should generally be double-spaced.")
+        warnings.append("Line spacing is not double.")
     else:
         passed.append("Line spacing appears compliant")
 
@@ -104,26 +114,42 @@ def check_docx(path: str) -> dict:
 
     summary["fonts"] = sorted(fonts)
     summary["font_sizes"] = sorted(sizes)
+    summary["compliance_status"] = "Passed" if not warnings else "Warning"
     return {"is_compliant": not warnings, "warnings": warnings, "passed_items": passed, "raw_summary": summary}
 
 
 def check_pdf(path: str) -> dict:
     reader = PdfReader(path)
     text = "\n".join(page.extract_text() or "" for page in reader.pages).lower()
-    missing_sections = [section for section in REQUIRED_SECTIONS if section.lower() not in text]
-    warnings = [
-        "PDF format checking is limited. Upload DOCX for accurate font, margin, spacing, and heading validation."
-    ]
+    missing_sections = []
+    for section in REQUIRED_SECTIONS:
+        aliases = [section.lower()]
+        if section == "Methodology":
+            aliases.append("methods")
+        if not any(alias in text for alias in aliases):
+            missing_sections.append(section)
+    warnings = []
     passed = []
+    page_count = len(reader.pages)
+    if page_count > 12:
+        warnings.append("More than 12 pages.")
     if missing_sections:
-        warnings.append("Missing required sections: " + ", ".join(missing_sections))
+        warnings.append("Missing IMRAD section: " + ", ".join(missing_sections))
     else:
-        passed.append("Required sections are present")
+        passed.append("IMRAD sections are present")
+    for page in reader.pages:
+        width = round(float(page.mediabox.width) / 72, 2)
+        height = round(float(page.mediabox.height) / 72, 2)
+        normalized = tuple(sorted((width, height)))
+        if normalized not in [tuple(sorted((8.5, 11.0))), tuple(sorted((8.27, 11.69)))]:
+            warnings.append("Invalid paper size. Use Short/Letter or A4.")
+            break
+    warnings.append("PDF format checking is limited. Upload DOCX for accurate font, font size, and line spacing validation.")
     return {
-        "is_compliant": False,
+        "is_compliant": not warnings,
         "warnings": warnings,
         "passed_items": passed,
-        "raw_summary": {"page_count": len(reader.pages)},
+        "raw_summary": {"page_count": page_count, "compliance_status": "Passed" if not warnings else "Warning"},
     }
 
 

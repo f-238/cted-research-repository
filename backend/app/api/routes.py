@@ -23,11 +23,19 @@ def _submission_query(db: Session):
         joinedload(ResearchSubmission.submitter),
         joinedload(ResearchSubmission.course),
         joinedload(ResearchSubmission.format_check),
+        joinedload(ResearchSubmission.remarks),
     )
 
 
 def _submission_out(item: ResearchSubmission) -> SubmissionOut:
-    return SubmissionOut.model_validate(item)
+    data = SubmissionOut.model_validate(item).model_dump()
+    data["latest_remark"] = _latest_remark(item)
+    return SubmissionOut(**data)
+
+
+def _latest_remark(item: ResearchSubmission) -> str | None:
+    latest = sorted(item.remarks, key=lambda remark: remark.created_at, reverse=True)[0] if item.remarks else None
+    return latest.remarks if latest else None
 
 
 def _accomplishment_query(db: Session):
@@ -95,7 +103,17 @@ def _accomplishment_faculty_match(user: User):
     )
 
 
-def _faculty_item(id: int, title: str, type: str, school_year: str, date_value, status: str, download_url: str | None = None) -> FacultyResearchItemOut:
+def _faculty_item(
+    id: int,
+    title: str,
+    type: str,
+    school_year: str,
+    date_value,
+    status: str,
+    download_url: str | None = None,
+    latest_remark: str | None = None,
+    **extra,
+) -> FacultyResearchItemOut:
     return FacultyResearchItemOut(
         id=id,
         title=title,
@@ -104,7 +122,33 @@ def _faculty_item(id: int, title: str, type: str, school_year: str, date_value, 
         date=str(date_value),
         status=status,
         download_url=download_url,
+        latest_remark=latest_remark,
+        **extra,
     )
+
+
+def _publish_approved_submission(db: Session, submission: ResearchSubmission) -> None:
+    if submission.submission_type == "research":
+        return
+    if submission.submission_type not in {"presentation", "publication", "utilization"}:
+        return
+    item = db.query(AccomplishmentReport).filter(AccomplishmentReport.source_submission_id == submission.id).first()
+    if not item:
+        item = AccomplishmentReport(source_submission_id=submission.id, report_type=submission.submission_type, owner_id=submission.submitter_id)
+    item.title = submission.title
+    item.researcher = submission.authors
+    item.category = submission.keywords or submission.submission_type.title()
+    item.organization = submission.adviser
+    item.venue = submission.section or None
+    item.link = None
+    item.event_date = submission.created_at.date()
+    item.school_year = submission.school_year
+    item.status = "Approved"
+    item.file_path = submission.file_path
+    item.original_filename = submission.original_filename
+    item.mime_type = submission.mime_type
+    item.file_size = submission.file_size
+    db.add(item)
 
 
 def _submission_view_url(item: ResearchSubmission, user: User) -> str:
@@ -290,25 +334,52 @@ def faculty_my_researches(db: Session = Depends(get_db), user: User = Depends(re
         raise HTTPException(status_code=403, detail="Faculty access required.")
 
     submissions = _submission_query(db).filter(_submission_faculty_match(user)).order_by(ResearchSubmission.created_at.desc()).all()
-    accomplishments = _accomplishment_query(db).filter(_accomplishment_faculty_match(user)).order_by(AccomplishmentReport.event_date.desc()).all()
+    accomplishments = _accomplishment_query(db).filter(
+        _accomplishment_faculty_match(user),
+        AccomplishmentReport.source_submission_id.is_(None),
+    ).order_by(AccomplishmentReport.event_date.desc()).all()
 
     grouped = FacultyResearchResultsOut(
-        research_submissions=[
-            _faculty_item(
-                item.id,
-                item.title,
-                "Research Submission",
-                item.school_year,
-                item.created_at.date(),
-                item.status,
-                f"/api/submissions/{item.id}/download",
-            )
-            for item in submissions
-        ],
+        research_submissions=[],
         presentations=[],
         publications=[],
         utilizations=[],
     )
+
+    submission_labels = {
+        "research": "Research Submission",
+        "presentation": "Presentation",
+        "publication": "Publication",
+        "utilization": "Utilization",
+    }
+    submission_groups = {
+        "research": "research_submissions",
+        "presentation": "presentations",
+        "publication": "publications",
+        "utilization": "utilizations",
+    }
+    for item in submissions:
+        key = submission_groups.get(item.submission_type or "research", "research_submissions")
+        getattr(grouped, key).append(_faculty_item(
+            item.id,
+            item.title,
+            submission_labels.get(item.submission_type or "research", "Research Submission"),
+            item.school_year,
+            item.created_at.date(),
+            item.status,
+            f"/api/submissions/{item.id}/download",
+            _latest_remark(item),
+            submission_type=item.submission_type,
+            authors=item.authors,
+            adviser=item.adviser,
+            course_id=item.course_id,
+            course_name=item.course.name if item.course else None,
+            section=item.section,
+            submission_year=item.submission_year,
+            keywords=item.keywords,
+            abstract=item.abstract,
+            can_edit=item.submitter_id == user.id and item.status in {"Pending Review", "Needs Revision"},
+        ))
 
     for item in accomplishments:
         key = f"{item.report_type}s"
@@ -330,11 +401,18 @@ def faculty_accomplishment_summary(db: Session = Depends(get_db), user: User = D
     if user.role != "faculty":
         raise HTTPException(status_code=403, detail="Faculty access required.")
 
-    researches = db.query(func.count(ResearchSubmission.id)).filter(_submission_faculty_match(user)).scalar() or 0
+    researches = db.query(func.count(ResearchSubmission.id)).filter(
+        ResearchSubmission.submission_type == "research",
+        ResearchSubmission.status == "Approved",
+        _submission_faculty_match(user),
+    ).scalar() or 0
     rows = db.query(
         AccomplishmentReport.report_type,
         func.count(AccomplishmentReport.id),
-    ).filter(_accomplishment_faculty_match(user)).group_by(AccomplishmentReport.report_type).all()
+    ).filter(
+        AccomplishmentReport.status == "Approved",
+        _accomplishment_faculty_match(user),
+    ).group_by(AccomplishmentReport.report_type).all()
     counts = dict(rows)
     return FacultyAccomplishmentSummaryOut(
         researches=researches,
@@ -346,6 +424,7 @@ def faculty_accomplishment_summary(db: Session = Depends(get_db), user: User = D
 
 @router.post("/submissions", response_model=SubmissionOut)
 def upload_submission(
+    submission_type: str = Form("research"),
     title: str = Form(),
     authors: str = Form(),
     course_id: int = Form(),
@@ -359,8 +438,11 @@ def upload_submission(
     db: Session = Depends(get_db),
     user: User = Depends(require_approved),
 ):
+    if submission_type not in {"research", "presentation", "publication", "utilization"}:
+        raise HTTPException(status_code=400, detail="Invalid submission type.")
     stored = store_upload(file, "research", {".docx", ".pdf"})
     submission = ResearchSubmission(
+        submission_type=submission_type,
         title=title,
         authors=authors,
         course_id=course_id,
@@ -385,10 +467,10 @@ def upload_submission(
     finally:
         Path(stored.temp_path).unlink(missing_ok=True)
     db.add(FormatCheckResult(submission_id=submission.id, is_compliant=compliant, warnings=warnings, passed_items=passed, raw_summary=raw))
-    notify(db, user.id, "Submission received", f"Your research '{title}' was submitted for review.", "/my-submissions")
+    notify(db, user.id, "Submission received", f"Your {submission_type} '{title}' was submitted for review.", "/my-submissions")
     if not compliant:
         notify(db, user.id, "Format warning detected", "Review the format warnings saved with your submission.", "/my-submissions")
-    notify_admins(db, "New research uploaded", f"{user.full_name} uploaded '{title}'.", "/pending-reviews")
+    notify_admins(db, "New submission uploaded", f"{user.full_name} uploaded '{title}' as {submission_type}.", "/pending-reviews")
     db.commit()
     return _submission_out(_submission_query(db).filter(ResearchSubmission.id == submission.id).first())
 
@@ -431,7 +513,11 @@ def repository(
 ):
     query = _submission_query(db)
     if user.role == "admin":
-        query = query.filter(ResearchSubmission.status == "Approved", ResearchSubmission.visible.is_(True))
+        query = query.filter(
+            ResearchSubmission.submission_type == "research",
+            ResearchSubmission.status == "Approved",
+            ResearchSubmission.visible.is_(True),
+        )
     else:
         query = query.filter(ResearchSubmission.submitter_id == user.id)
     if search:
@@ -500,6 +586,8 @@ def review_submission(submission_id: int, payload: ReviewCreate, db: Session = D
         raise HTTPException(status_code=404, detail="Submission not found.")
     submission.status = payload.status
     db.add(ReviewRemark(submission_id=submission.id, reviewer_id=admin.id, status=payload.status, remarks=payload.remarks))
+    if payload.status == "Approved":
+        _publish_approved_submission(db, submission)
     if submission.submitter_id:
         notify(db, submission.submitter_id, f"Research {payload.status}", payload.remarks, "/my-submissions")
     db.commit()
@@ -548,6 +636,7 @@ def update_submission(
     submission = db.get(ResearchSubmission, submission_id)
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found.")
+    previous_status = submission.status
     if user.role != "admin":
         if submission.submitter_id != user.id:
             raise HTTPException(status_code=403, detail="You can only edit your own submissions.")
@@ -583,6 +672,9 @@ def update_submission(
             submission.format_check.raw_summary = raw
         else:
             db.add(FormatCheckResult(submission_id=submission.id, is_compliant=compliant, warnings=warnings, passed_items=passed, raw_summary=raw))
+    if user.role != "admin" and previous_status == "Needs Revision":
+        submission.status = "Pending Review"
+        notify_admins(db, "Revised submission uploaded", f"{user.full_name} resubmitted '{submission.title}' for review.", "/pending-reviews")
     db.commit()
     return _submission_out(_submission_query(db).filter(ResearchSubmission.id == submission.id).first())
 

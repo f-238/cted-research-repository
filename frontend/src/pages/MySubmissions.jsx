@@ -43,7 +43,7 @@ export default function MySubmissions() {
     setForm({
       title: item.title,
       authors: item.authors,
-      course_id: item.course.id,
+      course_id: item.course?.id || item.course_id,
       section: item.section || "",
       adviser: item.adviser,
       school_year: item.school_year,
@@ -84,7 +84,7 @@ export default function MySubmissions() {
       <h1 className="text-2xl font-bold">My Researches</h1>
       {message && <div className="mt-4 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{message}</div>}
       {user?.role === "faculty" ? (
-        <FacultyResearchGroups results={facultyResults} activeType={searchParams.get("type") || ""} />
+        <FacultyResearchGroups results={facultyResults} activeType={searchParams.get("type") || ""} onEdit={openEdit} />
       ) : (
         <>
       <div className="mt-5 grid gap-4">
@@ -94,6 +94,7 @@ export default function MySubmissions() {
               <div>
                 <h2 className="font-semibold">{item.title}</h2>
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                  <span>Type: {labelType(item.submission_type)}</span>
                   <span>Adviser: {item.adviser}</span>
                   <span>{item.course.name}</span>
                   <span>School Year {item.school_year}</span>
@@ -106,13 +107,14 @@ export default function MySubmissions() {
             {viewing[item.id] && (
               <>
                 <p className="mt-3 text-sm text-slate-600">{item.abstract}</p>
+                {item.latest_remark && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">Admin remarks: {item.latest_remark}</div>}
                 {item.format_check && <div className="mt-3 text-sm text-slate-600">{item.format_check.is_compliant ? "Format check passed." : item.format_check.warnings.join(" ")}</div>}
               </>
             )}
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="btn-secondary" onClick={() => setViewing({ ...viewing, [item.id]: !viewing[item.id] })}>{viewing[item.id] ? "Hide" : "View"}</button>
               <button className="btn-secondary" onClick={() => openSignedUrl(`/api/submissions/${item.id}/download`)}>Download</button>
-              {["Pending Review", "Needs Revision"].includes(item.status) && <button className="btn-secondary" onClick={() => openEdit(item)}><Edit3 size={16} /> Edit</button>}
+              {["Pending Review", "Needs Revision"].includes(item.status) && <button className="btn-secondary" onClick={() => openEdit(item)}><Edit3 size={16} /> {item.status === "Needs Revision" ? "Re-upload Revised File" : "Edit"}</button>}
             </div>
           </article>
         ))}
@@ -154,7 +156,7 @@ export default function MySubmissions() {
   );
 }
 
-function FacultyResearchGroups({ results, activeType }) {
+function FacultyResearchGroups({ results, activeType, onEdit }) {
   const total = facultyGroups.reduce((sum, [key]) => sum + (results[key]?.length || 0), 0);
   const visibleGroups = activeType ? facultyGroups.filter(([key]) => key === activeType) : facultyGroups;
   if (!total) {
@@ -184,7 +186,9 @@ function FacultyResearchGroups({ results, activeType }) {
                   <div className="flex flex-wrap items-center gap-3">
                     <StatusBadge status={item.status} />
                     {item.download_url && <button className="btn-secondary" onClick={() => openSignedUrl(item.download_url)}>View/Download</button>}
+                    {item.can_edit && <button className="btn-secondary" onClick={() => onEdit(item)}><Edit3 size={16} /> {item.status === "Needs Revision" ? "Re-upload Revised File" : "Edit"}</button>}
                   </div>
+                  {item.latest_remark && <p className="mt-3 basis-full rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">Admin remarks: {item.latest_remark}</p>}
                 </article>
               ))}
             </div>
@@ -204,4 +208,8 @@ function defaultFacultyResults() {
     publications: [],
     utilizations: []
   };
+}
+
+function labelType(value) {
+  return (value || "research").replace(/^\w/, (letter) => letter.toUpperCase());
 }

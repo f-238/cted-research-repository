@@ -15,6 +15,7 @@ def run_startup_migrations(engine: Engine) -> None:
     table_names = inspector.get_table_names()
     _add_file_metadata_columns(engine, inspector, table_names)
     _add_user_profile_image_column(engine, inspector, table_names)
+    _add_submission_workflow_columns(engine, inspector, table_names)
     _make_user_references_nullable(engine, inspector, table_names)
 
     if not engine.url.get_backend_name().startswith("sqlite"):
@@ -34,6 +35,7 @@ def run_startup_migrations(engine: Engine) -> None:
         connection.execute(text("""
             CREATE TABLE research_submissions (
                 id INTEGER NOT NULL PRIMARY KEY,
+                submission_type VARCHAR(40),
                 title VARCHAR(260) NOT NULL,
                 authors VARCHAR(260) NOT NULL,
                 course_id INTEGER NOT NULL,
@@ -60,16 +62,17 @@ def run_startup_migrations(engine: Engine) -> None:
             submission_year = row["submission_year"] if "submission_year" in row and row["submission_year"] else _submission_year_from_school_year(row["school_year"])
             connection.execute(text("""
                 INSERT INTO research_submissions (
-                    id, title, authors, course_id, section, adviser, school_year, submission_year,
+                    id, submission_type, title, authors, course_id, section, adviser, school_year, submission_year,
                     keywords, abstract, status, file_path, original_filename, file_type, visible,
                     submitter_id, created_at, updated_at
                 ) VALUES (
-                    :id, :title, :authors, :course_id, :section, :adviser, :school_year, :submission_year,
+                    :id, :submission_type, :title, :authors, :course_id, :section, :adviser, :school_year, :submission_year,
                     :keywords, :abstract, :status, :file_path, :original_filename, :file_type, :visible,
                     :submitter_id, :created_at, :updated_at
                 )
             """), {
                 "id": row["id"],
+                "submission_type": row["submission_type"] if "submission_type" in row and row["submission_type"] else "research",
                 "title": row["title"],
                 "authors": row["authors"],
                 "course_id": row["course_id"],
@@ -111,6 +114,19 @@ def _add_user_profile_image_column(engine: Engine, inspector, table_names: list[
         return
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE users ADD COLUMN profile_image_path VARCHAR(500)"))
+
+
+def _add_submission_workflow_columns(engine: Engine, inspector, table_names: list[str]) -> None:
+    with engine.begin() as connection:
+        if "research_submissions" in table_names:
+            columns = {column["name"] for column in inspector.get_columns("research_submissions")}
+            if "submission_type" not in columns:
+                connection.execute(text("ALTER TABLE research_submissions ADD COLUMN submission_type VARCHAR(40)"))
+                connection.execute(text("UPDATE research_submissions SET submission_type = 'research' WHERE submission_type IS NULL"))
+        if "accomplishment_reports" in table_names:
+            columns = {column["name"] for column in inspector.get_columns("accomplishment_reports")}
+            if "source_submission_id" not in columns:
+                connection.execute(text("ALTER TABLE accomplishment_reports ADD COLUMN source_submission_id INTEGER"))
 
 
 def _make_user_references_nullable(engine: Engine, inspector, table_names: list[str]) -> None:

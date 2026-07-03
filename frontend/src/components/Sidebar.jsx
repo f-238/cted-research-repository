@@ -62,7 +62,7 @@ const studentMenuGroups = [
     label: "Student",
     items: [
       ["/my-submissions", Library, "My Researches"],
-      ["/upload", FileUp, "Upload Research"],
+      ["/upload", FileUp, "Upload Submission"],
       ["/notifications", Bell, "Notifications"],
       ["/profile", UserCog, "My Profile"]
     ]
@@ -74,7 +74,7 @@ const facultyMenuGroups = [
     label: "Faculty",
     items: [
       ["/my-submissions", Library, "My Researches"],
-      ["/upload", FileUp, "Upload Research"],
+      ["/upload", FileUp, "Upload Submission"],
       ["/reports/dashboard", BarChart3, "Reports Dashboard"],
       ["/notifications", Bell, "Notifications"],
       ["/profile", UserCog, "My Profile"]

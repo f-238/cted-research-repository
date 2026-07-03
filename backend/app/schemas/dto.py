@@ -63,6 +63,7 @@ class FormatCheckOut(BaseModel):
 
 class SubmissionOut(BaseModel):
     id: int
+    submission_type: str = "research"
     title: str
     authors: str
     section: str
@@ -78,6 +79,7 @@ class SubmissionOut(BaseModel):
     mime_type: str | None = None
     file_size: int | None = None
     created_at: datetime
+    latest_remark: str | None = None
     submitter: UserOut | None = None
     course: CourseOut
     format_check: FormatCheckOut | None = None
@@ -144,6 +146,17 @@ class FacultyResearchItemOut(BaseModel):
     date: str
     status: str
     download_url: str | None = None
+    latest_remark: str | None = None
+    submission_type: str | None = None
+    authors: str | None = None
+    adviser: str | None = None
+    course_id: int | None = None
+    course_name: str | None = None
+    section: str | None = None
+    submission_year: int | None = None
+    keywords: str | None = None
+    abstract: str | None = None
+    can_edit: bool = False
 
 
 class FacultyResearchResultsOut(BaseModel):
