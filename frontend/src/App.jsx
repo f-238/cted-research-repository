@@ -21,13 +21,20 @@ import ChangePassword from "./pages/ChangePassword";
 import AccomplishmentReports from "./pages/AccomplishmentReports";
 import AccomplishmentReportTable from "./pages/AccomplishmentReportTable";
 import SearchResults from "./pages/SearchResults";
+import StudentDashboard from "./pages/StudentDashboard";
 
-function Protected({ admin = false }) {
+function Protected({ admin = false, roles = null }) {
   const { user, loading, isAdmin } = useAuth();
   if (loading) return <div className="p-8 text-sm text-slate-500">Loading application...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (admin && !isAdmin) return <Navigate to="/upload" replace />;
+  if (admin && !isAdmin) return <Navigate to="/dashboard" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={isAdmin ? "/admin" : "/dashboard"} replace />;
   return <AppShell />;
+}
+
+function RoleDashboard() {
+  const { isAdmin } = useAuth();
+  return isAdmin ? <Navigate to="/admin" replace /> : <StudentDashboard />;
 }
 
 export default function App() {
@@ -36,6 +43,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route element={<Protected />}>
+        <Route path="/dashboard" element={<RoleDashboard />} />
         <Route path="/upload" element={<UploadResearch />} />
         <Route path="/my-submissions" element={<MySubmissions />} />
         <Route path="/repository" element={<Repository />} />
@@ -43,12 +51,10 @@ export default function App() {
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/settings" element={<Settings />} />
         <Route path="/settings/account" element={<AccountSettings />} />
         <Route path="/settings/password" element={<ChangePassword />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/reports/dashboard" element={<ReportsDashboard />} />
-        <Route path="/reports/annual-trends" element={<ReportsDashboard />} />
+      </Route>
+      <Route element={<Protected roles={["admin", "faculty"]} />}>
         <Route path="/accomplishment-reports" element={<AccomplishmentReports />} />
         <Route path="/accomplishment-reports/presentation" element={<AccomplishmentReportTable type="presentation" />} />
         <Route path="/accomplishment-reports/publication" element={<AccomplishmentReportTable type="publication" />} />
@@ -56,6 +62,10 @@ export default function App() {
       </Route>
       <Route element={<Protected admin />}>
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/reports/dashboard" element={<ReportsDashboard />} />
+        <Route path="/reports/annual-trends" element={<ReportsDashboard />} />
         <Route path="/course/:courseId" element={<CourseDashboard />} />
         <Route path="/programs/:programId/years" element={<CourseDashboard />} />
         <Route path="/programs/:programId/years/:schoolYear/researches" element={<CourseDashboard />} />

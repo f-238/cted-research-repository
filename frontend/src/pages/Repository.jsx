@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState";
 import { api, openSignedUrl } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
 export default function Repository() {
+  const { isAdmin } = useAuth();
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
   const load = () => api.get(`/api/repository?search=${encodeURIComponent(search)}`).then(setItems);
   useEffect(() => { load(); }, []);
   return (
     <>
-      <h1 className="text-2xl font-bold">Approved Research Repository</h1>
+      <h1 className="text-2xl font-bold">{isAdmin ? "Approved Research Repository" : "My Research Repository"}</h1>
       <div className="panel mt-5 flex flex-col gap-3 p-4 sm:flex-row">
         <input className="field" placeholder="Search title, author, keywords, adviser, or school year" value={search} onChange={(e) => setSearch(e.target.value)} />
         <button className="btn-primary" onClick={load}>Search</button>
@@ -27,7 +29,7 @@ export default function Repository() {
           </article>
         ))}
       </div>
-      {!items.length && <div className="mt-4"><EmptyState title="No research submissions yet." body="Approved research will appear here after admin review." /></div>}
+      {!items.length && <div className="mt-4"><EmptyState title="No research submissions yet." body={isAdmin ? "Approved research will appear here after admin review." : "Your submitted research records will appear here after upload."} /></div>}
     </>
   );
 }

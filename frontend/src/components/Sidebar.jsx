@@ -7,6 +7,7 @@ import {
   FileUp,
   Home,
   Library,
+  LogOut,
   Presentation,
   ScrollText,
   Settings,
@@ -16,11 +17,11 @@ import {
   UserCog
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import logo from "../assets/cted-logo.png";
 
-const menuGroups = [
+const adminMenuGroups = [
   {
     label: "Main",
     items: [
@@ -56,13 +57,45 @@ const menuGroups = [
   }
 ];
 
+const studentMenuGroups = [
+  {
+    label: "Student",
+    items: [
+      ["/my-submissions", Library, "My Researches"],
+      ["/upload", FileUp, "Upload Research"],
+      ["/notifications", Bell, "Notifications"],
+      ["/profile", UserCog, "My Profile"]
+    ]
+  }
+];
+
+const facultyMenuGroups = [
+  {
+    label: "Faculty",
+    items: [
+      ["/my-submissions", Library, "My Researches"],
+      ["/upload", FileUp, "Upload Research"],
+      ["/accomplishment-reports", Layers, "Accomplishment Reports", [
+        ["/accomplishment-reports/presentation", Presentation, "Presentation"],
+        ["/accomplishment-reports/publication", ScrollText, "Publication"],
+        ["/accomplishment-reports/utilization", BookOpenCheck, "Utilization"]
+      ]],
+      ["/notifications", Bell, "Notifications"],
+      ["/profile", UserCog, "My Profile"]
+    ]
+  }
+];
+
 export default function Sidebar() {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
+  const navigate = useNavigate();
   const [openSections, setOpenSections] = useState({ "Accomplishment Reports": true, Reports: true });
-  const groups = menuGroups.map((group) => ({
-    ...group,
-    items: group.items.filter(([to]) => isAdmin || !["/admin", "/pending-reviews", "/users", "/reports"].includes(to))
-  }));
+  const groups = isAdmin ? adminMenuGroups : user?.role === "faculty" ? facultyMenuGroups : studentMenuGroups;
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <aside className="hidden min-h-screen w-[312px] shrink-0 border-r border-white/10 bg-gradient-to-b from-[#0B4EA2] via-[#083D81] to-[#062B63] px-5 py-6 text-white shadow-2xl lg:flex lg:flex-col">
@@ -130,7 +163,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-auto space-y-4">
-        <div className="rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
+        {isAdmin && <div className="rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-100">
             <ShieldCheck size={15} />
             Secure institutional system
@@ -139,7 +172,16 @@ export default function Sidebar() {
             <Database size={15} />
             Repository services online
           </div>
-        </div>
+        </div>}
+        {!isAdmin && (
+          <button
+            onClick={handleLogout}
+            className="flex min-h-[48px] w-full items-center gap-3 rounded-xl px-3.5 text-left text-[14px] font-semibold text-blue-50 transition duration-200 hover:bg-white/10 hover:text-white"
+          >
+            <LogOut size={20} strokeWidth={2} />
+            <span>Logout</span>
+          </button>
+        )}
       </div>
     </aside>
   );

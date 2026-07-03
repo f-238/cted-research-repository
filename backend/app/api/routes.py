@@ -158,7 +158,7 @@ def course_stats(db: Session = Depends(get_db), _: User = Depends(require_admin)
 
 
 @router.get("/dashboard/report-summary", response_model=ReportSummary)
-def report_summary(db: Session = Depends(get_db), _: User = Depends(require_approved)):
+def report_summary(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     rows = db.query(AccomplishmentReport.report_type, func.count(AccomplishmentReport.id)).group_by(AccomplishmentReport.report_type).all()
     counts = dict(rows)
     return ReportSummary(
@@ -169,7 +169,7 @@ def report_summary(db: Session = Depends(get_db), _: User = Depends(require_appr
 
 
 @router.get("/reports/trends", response_model=list[ReportTrend])
-def report_trends(db: Session = Depends(get_db), _: User = Depends(require_approved)):
+def report_trends(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     rows = db.query(
         AccomplishmentReport.school_year,
         AccomplishmentReport.report_type,
@@ -200,10 +200,7 @@ def search(q: str = "", db: Session = Depends(get_db), user: User = Depends(requ
     needle = f"%{term}%"
     submissions = _submission_query(db).filter(_submission_search_match(needle))
     if user.role != "admin":
-        submissions = submissions.filter(or_(
-            ResearchSubmission.submitter_id == user.id,
-            (ResearchSubmission.status == "Approved") & (ResearchSubmission.visible.is_(True)),
-        ))
+        submissions = submissions.filter(ResearchSubmission.submitter_id == user.id)
 
     accomplishments = _accomplishment_query(db).filter(_accomplishment_search_match(needle))
     if user.role != "admin":
@@ -319,8 +316,19 @@ def list_submissions(
 
 
 @router.get("/repository", response_model=list[SubmissionOut])
-def repository(search: str | None = None, course_id: int | None = None, school_year: str | None = None, submission_year: int | None = None, db: Session = Depends(get_db)):
-    query = _submission_query(db).filter(ResearchSubmission.status == "Approved", ResearchSubmission.visible.is_(True))
+def repository(
+    search: str | None = None,
+    course_id: int | None = None,
+    school_year: str | None = None,
+    submission_year: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_approved),
+):
+    query = _submission_query(db)
+    if user.role == "admin":
+        query = query.filter(ResearchSubmission.status == "Approved", ResearchSubmission.visible.is_(True))
+    else:
+        query = query.filter(ResearchSubmission.submitter_id == user.id)
     if search:
         needle = f"%{search}%"
         query = query.filter(or_(
@@ -435,8 +443,8 @@ def update_submission(
     if user.role != "admin":
         if submission.submitter_id != user.id:
             raise HTTPException(status_code=403, detail="You can only edit your own submissions.")
-        if submission.status != "Pending Review":
-            raise HTTPException(status_code=403, detail="Only pending submissions can be edited.")
+        if submission.status not in {"Pending Review", "Needs Revision"}:
+            raise HTTPException(status_code=403, detail="Only pending or needs revision submissions can be edited.")
     submission.title = title
     submission.authors = authors
     submission.course_id = course_id

@@ -24,6 +24,7 @@ export function AuthProvider({ children }) {
     const data = await api.postForm("/api/auth/login", form);
     persistToken(data.access_token);
     setUser(data.user);
+    return data.user;
   }
 
   function updateUser(nextUser) {

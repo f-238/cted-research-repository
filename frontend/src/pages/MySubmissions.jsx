@@ -8,6 +8,7 @@ export default function MySubmissions() {
   const [items, setItems] = useState([]);
   const [courses, setCourses] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [viewing, setViewing] = useState({});
   const [form, setForm] = useState({});
   const [message, setMessage] = useState("");
 
@@ -63,7 +64,7 @@ export default function MySubmissions() {
 
   return (
     <>
-      <h1 className="text-2xl font-bold">My Submissions</h1>
+      <h1 className="text-2xl font-bold">My Researches</h1>
       {message && <div className="mt-4 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{message}</div>}
       <div className="mt-5 grid gap-4">
         {items.map((item) => (
@@ -71,14 +72,26 @@ export default function MySubmissions() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="font-semibold">{item.title}</h2>
-                <p className="text-sm text-slate-500">{item.course.name} - School Year {item.school_year} - Submission Year {item.submission_year}</p>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                  <span>Adviser: {item.adviser}</span>
+                  <span>{item.course.name}</span>
+                  <span>School Year {item.school_year}</span>
+                  <span>Submission Year {item.submission_year}</span>
+                  <span>Submitted {new Date(item.created_at).toLocaleDateString()}</span>
+                </div>
               </div>
               <StatusBadge status={item.status} />
             </div>
-            {item.format_check && <div className="mt-3 text-sm text-slate-600">{item.format_check.is_compliant ? "Format check passed." : item.format_check.warnings.join(" ")}</div>}
+            {viewing[item.id] && (
+              <>
+                <p className="mt-3 text-sm text-slate-600">{item.abstract}</p>
+                {item.format_check && <div className="mt-3 text-sm text-slate-600">{item.format_check.is_compliant ? "Format check passed." : item.format_check.warnings.join(" ")}</div>}
+              </>
+            )}
             <div className="mt-4 flex flex-wrap gap-3">
-              <button className="btn-secondary" onClick={() => openSignedUrl(`/api/submissions/${item.id}/download`)}>Download file</button>
-              {item.status === "Pending Review" && <button className="btn-secondary" onClick={() => openEdit(item)}><Edit3 size={16} /> Edit Pending</button>}
+              <button className="btn-secondary" onClick={() => setViewing({ ...viewing, [item.id]: !viewing[item.id] })}>{viewing[item.id] ? "Hide" : "View"}</button>
+              <button className="btn-secondary" onClick={() => openSignedUrl(`/api/submissions/${item.id}/download`)}>Download</button>
+              {["Pending Review", "Needs Revision"].includes(item.status) && <button className="btn-secondary" onClick={() => openEdit(item)}><Edit3 size={16} /> Edit</button>}
             </div>
           </article>
         ))}
