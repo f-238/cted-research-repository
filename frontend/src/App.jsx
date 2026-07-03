@@ -20,6 +20,7 @@ import AccountSettings from "./pages/AccountSettings";
 import ChangePassword from "./pages/ChangePassword";
 import AccomplishmentReports from "./pages/AccomplishmentReports";
 import AccomplishmentReportTable from "./pages/AccomplishmentReportTable";
+import SearchResults from "./pages/SearchResults";
 
 function Protected({ admin = false }) {
   const { user, loading, isAdmin } = useAuth();
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/upload" element={<UploadResearch />} />
         <Route path="/my-submissions" element={<MySubmissions />} />
         <Route path="/repository" element={<Repository />} />
+        <Route path="/search" element={<SearchResults />} />
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/profile" element={<Profile />} />

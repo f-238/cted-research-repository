@@ -112,6 +112,27 @@ class NotificationOut(BaseModel):
         from_attributes = True
 
 
+class NotificationCountOut(BaseModel):
+    unread_count: int
+
+
+class SearchResultOut(BaseModel):
+    id: int
+    title: str
+    type: str
+    author: str
+    school_year: str
+    status: str
+    view_url: str
+
+
+class SearchResultsOut(BaseModel):
+    research_submissions: list[SearchResultOut]
+    presentations: list[SearchResultOut]
+    publications: list[SearchResultOut]
+    utilizations: list[SearchResultOut]
+
+
 class DashboardStats(BaseModel):
     course_id: int
     course_name: str

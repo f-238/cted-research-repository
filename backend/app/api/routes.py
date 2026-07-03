@@ -8,7 +8,7 @@ from app.api.deps import require_admin, require_approved
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.entities import AccomplishmentReport, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
-from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
+from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
 from app.services.storage import delete_file, signed_url, store_upload
@@ -39,6 +39,49 @@ def _ensure_report_access(item: AccomplishmentReport, user: User, write: bool = 
         raise HTTPException(status_code=403, detail="You can only access your own records.")
     if write and item.status != "Pending":
         raise HTTPException(status_code=403, detail="Only pending records can be changed.")
+
+
+def _submission_search_match(needle: str):
+    return or_(
+        ResearchSubmission.title.ilike(needle),
+        ResearchSubmission.authors.ilike(needle),
+        ResearchSubmission.adviser.ilike(needle),
+        ResearchSubmission.keywords.ilike(needle),
+        ResearchSubmission.abstract.ilike(needle),
+        ResearchSubmission.school_year.ilike(needle),
+        ResearchSubmission.course.has(or_(Course.name.ilike(needle), Course.code.ilike(needle))),
+    )
+
+
+def _accomplishment_search_match(needle: str):
+    return or_(
+        AccomplishmentReport.title.ilike(needle),
+        AccomplishmentReport.researcher.ilike(needle),
+        AccomplishmentReport.organization.ilike(needle),
+        AccomplishmentReport.school_year.ilike(needle),
+        AccomplishmentReport.category.ilike(needle),
+        AccomplishmentReport.venue.ilike(needle),
+    )
+
+
+def _submission_view_url(item: ResearchSubmission, user: User) -> str:
+    if user.role == "admin" and item.status != "Approved":
+        return "/pending-reviews"
+    if item.submitter_id == user.id:
+        return "/my-submissions"
+    return "/repository"
+
+
+def _search_result(id: int, title: str, type: str, author: str, school_year: str, status: str, view_url: str) -> SearchResultOut:
+    return SearchResultOut(
+        id=id,
+        title=title,
+        type=type,
+        author=author,
+        school_year=school_year,
+        status=status,
+        view_url=view_url,
+    )
 
 
 @router.post("/auth/register", response_model=UserOut)
@@ -126,6 +169,58 @@ def report_trends(db: Session = Depends(get_db), _: User = Depends(require_appro
         )
         for school_year, counts in sorted(grouped.items())
     ]
+
+
+@router.get("/search", response_model=SearchResultsOut)
+def search(q: str = "", db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    term = q.strip()
+    empty = SearchResultsOut(research_submissions=[], presentations=[], publications=[], utilizations=[])
+    if not term:
+        return empty
+
+    needle = f"%{term}%"
+    submissions = _submission_query(db).filter(_submission_search_match(needle))
+    if user.role != "admin":
+        submissions = submissions.filter(or_(
+            ResearchSubmission.submitter_id == user.id,
+            (ResearchSubmission.status == "Approved") & (ResearchSubmission.visible.is_(True)),
+        ))
+
+    accomplishments = _accomplishment_query(db).filter(_accomplishment_search_match(needle))
+    if user.role != "admin":
+        accomplishments = accomplishments.filter(AccomplishmentReport.owner_id == user.id)
+
+    grouped = {
+        "research_submissions": [
+            _search_result(
+                item.id,
+                item.title,
+                "Research Submission",
+                item.authors,
+                item.school_year,
+                item.status,
+                _submission_view_url(item, user),
+            )
+            for item in submissions.order_by(ResearchSubmission.created_at.desc()).limit(30).all()
+        ],
+        "presentations": [],
+        "publications": [],
+        "utilizations": [],
+    }
+
+    for item in accomplishments.order_by(AccomplishmentReport.created_at.desc()).limit(90).all():
+        key = f"{item.report_type}s"
+        grouped[key].append(_search_result(
+            item.id,
+            item.title,
+            item.report_type.title(),
+            item.researcher,
+            item.school_year,
+            item.status,
+            f"/accomplishment-reports/{item.report_type}",
+        ))
+
+    return SearchResultsOut(**grouped)
 
 
 @router.post("/submissions", response_model=SubmissionOut)
@@ -541,6 +636,15 @@ def delete_user(user_id: int, db: Session = Depends(get_db), _: User = Depends(r
 @router.get("/notifications", response_model=list[NotificationOut])
 def notifications(db: Session = Depends(get_db), user: User = Depends(require_approved)):
     return db.query(Notification).filter(Notification.user_id == user.id).order_by(Notification.created_at.desc()).all()
+
+
+@router.get("/notifications/unread-count", response_model=NotificationCountOut)
+def unread_notifications(db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    count = db.query(func.count(Notification.id)).filter(
+        Notification.user_id == user.id,
+        Notification.is_read.is_(False),
+    ).scalar()
+    return NotificationCountOut(unread_count=count or 0)
 
 
 @router.patch("/notifications/{notification_id}/read", response_model=NotificationOut)
