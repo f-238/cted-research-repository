@@ -13,7 +13,12 @@ async function request(path, options = {}) {
   const headers = options.headers || {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch (err) {
+    throw new Error("Unable to reach the server. Please check the backend URL, CORS settings, or network connection.");
+  }
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Request failed" }));
     throw new Error(error.detail || "Request failed");

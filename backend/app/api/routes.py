@@ -2,6 +2,7 @@ import json
 from datetime import date
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from app.api.deps import require_admin, require_approved
@@ -711,9 +712,13 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
         raise HTTPException(status_code=409, detail="This user has related records and cannot be deleted unless records are reassigned or removed.")
 
     profile_image_path = user.profile_image_path
-    db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)
-    db.delete(user)
-    db.commit()
+    try:
+        db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)
+        db.delete(user)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This user has related records and cannot be deleted unless records are reassigned or removed.") from exc
     if profile_image_path:
         delete_file(profile_image_path, bucket=get_settings().supabase_profile_images_bucket)
     return {"ok": True}
