@@ -54,17 +54,19 @@ export default function App() {
         <Route path="/settings/account" element={<AccountSettings />} />
         <Route path="/settings/password" element={<ChangePassword />} />
       </Route>
-      <Route element={<Protected roles={["admin", "faculty"]} />}>
+      <Route element={<Protected roles={["admin"]} />}>
         <Route path="/accomplishment-reports" element={<AccomplishmentReports />} />
         <Route path="/accomplishment-reports/presentation" element={<AccomplishmentReportTable type="presentation" />} />
         <Route path="/accomplishment-reports/publication" element={<AccomplishmentReportTable type="publication" />} />
         <Route path="/accomplishment-reports/utilization" element={<AccomplishmentReportTable type="utilization" />} />
       </Route>
+      <Route element={<Protected roles={["admin", "faculty"]} />}>
+        <Route path="/reports/dashboard" element={<ReportsDashboard />} />
+      </Route>
       <Route element={<Protected admin />}>
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/reports" element={<Reports />} />
-        <Route path="/reports/dashboard" element={<ReportsDashboard />} />
         <Route path="/reports/annual-trends" element={<ReportsDashboard />} />
         <Route path="/course/:courseId" element={<CourseDashboard />} />
         <Route path="/programs/:programId/years" element={<CourseDashboard />} />

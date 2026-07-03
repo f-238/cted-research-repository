@@ -2,10 +2,20 @@ import { Edit3, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState";
 import StatusBadge from "../components/StatusBadge";
+import { useAuth } from "../context/AuthContext";
 import { api, openSignedUrl } from "../lib/api";
 
+const facultyGroups = [
+  ["research_submissions", "Research Submissions"],
+  ["presentations", "Presentations"],
+  ["publications", "Publications"],
+  ["utilizations", "Utilizations"]
+];
+
 export default function MySubmissions() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
+  const [facultyResults, setFacultyResults] = useState(defaultFacultyResults());
   const [courses, setCourses] = useState([]);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState({});
@@ -13,13 +23,18 @@ export default function MySubmissions() {
   const [message, setMessage] = useState("");
 
   async function load() {
-    setItems(await api.get("/api/submissions?mine=true"));
+    if (user?.role === "faculty") {
+      setFacultyResults(await api.get("/api/faculty/my-researches"));
+    } else {
+      setItems(await api.get("/api/submissions?mine=true"));
+    }
   }
 
   useEffect(() => {
+    if (!user) return;
     load();
     api.get("/api/courses").then(setCourses);
-  }, []);
+  }, [user]);
 
   function openEdit(item) {
     setEditing(item);
@@ -66,6 +81,10 @@ export default function MySubmissions() {
     <>
       <h1 className="text-2xl font-bold">My Researches</h1>
       {message && <div className="mt-4 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{message}</div>}
+      {user?.role === "faculty" ? (
+        <FacultyResearchGroups results={facultyResults} />
+      ) : (
+        <>
       <div className="mt-5 grid gap-4">
         {items.map((item) => (
           <article key={item.id} className="panel p-5">
@@ -97,6 +116,8 @@ export default function MySubmissions() {
         ))}
       </div>
       {!items.length && <div className="mt-4"><EmptyState title="No research submissions yet." body="Upload your first research document to start the review process." /></div>}
+        </>
+      )}
 
       {editing && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[#071B4D]/50 px-4 backdrop-blur-sm">
@@ -129,4 +150,55 @@ export default function MySubmissions() {
       )}
     </>
   );
+}
+
+function FacultyResearchGroups({ results }) {
+  const total = facultyGroups.reduce((sum, [key]) => sum + (results[key]?.length || 0), 0);
+  if (!total) {
+    return <div className="mt-4"><EmptyState title="No matched research records yet." body="Records will appear here when your name is listed as an author, researcher, adviser, or contributor." /></div>;
+  }
+
+  return (
+    <div className="mt-5 space-y-5">
+      {facultyGroups.map(([key, label]) => (
+        <section key={key} className="panel overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-white px-5 py-4">
+            <h2 className="font-extrabold text-[#071B4D]">{label}</h2>
+            <span className="rounded-full bg-[#F5F9FF] px-3 py-1 text-xs font-bold text-[#0B4EA2]">{results[key]?.length || 0}</span>
+          </div>
+          {results[key]?.length ? (
+            <div className="divide-y divide-[#E5E7EB]">
+              {results[key].map((item) => (
+                <article key={`${item.type}-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 p-5">
+                  <div>
+                    <h3 className="font-bold text-[#071B4D]">{item.title}</h3>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                      <span>{item.type}</span>
+                      <span>School Year {item.school_year}</span>
+                      <span>{item.date}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge status={item.status} />
+                    {item.download_url && <button className="btn-secondary" onClick={() => openSignedUrl(item.download_url)}>View/Download</button>}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="p-5 text-sm text-slate-500">No matches in this group.</div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function defaultFacultyResults() {
+  return {
+    research_submissions: [],
+    presentations: [],
+    publications: [],
+    utilizations: []
+  };
 }

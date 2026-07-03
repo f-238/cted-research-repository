@@ -136,6 +136,23 @@ class SearchResultsOut(BaseModel):
     utilizations: list[SearchResultOut]
 
 
+class FacultyResearchItemOut(BaseModel):
+    id: int
+    title: str
+    type: str
+    school_year: str
+    date: str
+    status: str
+    download_url: str | None = None
+
+
+class FacultyResearchResultsOut(BaseModel):
+    research_submissions: list[FacultyResearchItemOut]
+    presentations: list[FacultyResearchItemOut]
+    publications: list[FacultyResearchItemOut]
+    utilizations: list[FacultyResearchItemOut]
+
+
 class DashboardStats(BaseModel):
     course_id: int
     course_name: str

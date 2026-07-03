@@ -9,7 +9,7 @@ from app.api.deps import require_admin, require_approved
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.entities import AccomplishmentReport, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
-from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
+from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
 from app.core.config import get_settings
@@ -34,8 +34,16 @@ def _accomplishment_query(db: Session):
     return db.query(AccomplishmentReport).options(joinedload(AccomplishmentReport.owner))
 
 
+def _text_mentions_user(value: str | None, user: User) -> bool:
+    return bool(value and user.full_name and user.full_name.strip().lower() in value.lower())
+
+
 def _ensure_report_access(item: AccomplishmentReport, user: User, write: bool = False) -> None:
     if user.role == "admin":
+        return
+    if not write and user.role == "faculty" and (
+        _text_mentions_user(item.researcher, user) or _text_mentions_user(item.organization, user)
+    ):
         return
     if item.owner_id != user.id:
         raise HTTPException(status_code=403, detail="You can only access your own records.")
@@ -63,6 +71,39 @@ def _accomplishment_search_match(needle: str):
         AccomplishmentReport.school_year.ilike(needle),
         AccomplishmentReport.category.ilike(needle),
         AccomplishmentReport.venue.ilike(needle),
+    )
+
+
+def _faculty_name_match(user: User):
+    needle = f"%{user.full_name.strip()}%"
+    return needle
+
+
+def _submission_faculty_match(user: User):
+    needle = _faculty_name_match(user)
+    return or_(
+        ResearchSubmission.authors.ilike(needle),
+        ResearchSubmission.adviser.ilike(needle),
+    )
+
+
+def _accomplishment_faculty_match(user: User):
+    needle = _faculty_name_match(user)
+    return or_(
+        AccomplishmentReport.researcher.ilike(needle),
+        AccomplishmentReport.organization.ilike(needle),
+    )
+
+
+def _faculty_item(id: int, title: str, type: str, school_year: str, date_value, status: str, download_url: str | None = None) -> FacultyResearchItemOut:
+    return FacultyResearchItemOut(
+        id=id,
+        title=title,
+        type=type,
+        school_year=school_year,
+        date=str(date_value),
+        status=status,
+        download_url=download_url,
     )
 
 
@@ -158,7 +199,9 @@ def course_stats(db: Session = Depends(get_db), _: User = Depends(require_admin)
 
 
 @router.get("/dashboard/report-summary", response_model=ReportSummary)
-def report_summary(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def report_summary(db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    if user.role not in {"admin", "faculty"}:
+        raise HTTPException(status_code=403, detail="Faculty or admin access required.")
     rows = db.query(AccomplishmentReport.report_type, func.count(AccomplishmentReport.id)).group_by(AccomplishmentReport.report_type).all()
     counts = dict(rows)
     return ReportSummary(
@@ -169,7 +212,9 @@ def report_summary(db: Session = Depends(get_db), _: User = Depends(require_admi
 
 
 @router.get("/reports/trends", response_model=list[ReportTrend])
-def report_trends(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def report_trends(db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    if user.role not in {"admin", "faculty"}:
+        raise HTTPException(status_code=403, detail="Faculty or admin access required.")
     rows = db.query(
         AccomplishmentReport.school_year,
         AccomplishmentReport.report_type,
@@ -237,6 +282,47 @@ def search(q: str = "", db: Session = Depends(get_db), user: User = Depends(requ
         ))
 
     return SearchResultsOut(**grouped)
+
+
+@router.get("/faculty/my-researches", response_model=FacultyResearchResultsOut)
+def faculty_my_researches(db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    if user.role != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty access required.")
+
+    submissions = _submission_query(db).filter(_submission_faculty_match(user)).order_by(ResearchSubmission.created_at.desc()).all()
+    accomplishments = _accomplishment_query(db).filter(_accomplishment_faculty_match(user)).order_by(AccomplishmentReport.event_date.desc()).all()
+
+    grouped = FacultyResearchResultsOut(
+        research_submissions=[
+            _faculty_item(
+                item.id,
+                item.title,
+                "Research Submission",
+                item.school_year,
+                item.created_at.date(),
+                item.status,
+                f"/api/submissions/{item.id}/download",
+            )
+            for item in submissions
+        ],
+        presentations=[],
+        publications=[],
+        utilizations=[],
+    )
+
+    for item in accomplishments:
+        key = f"{item.report_type}s"
+        getattr(grouped, key).append(_faculty_item(
+            item.id,
+            item.title,
+            item.report_type.title(),
+            item.school_year,
+            item.event_date,
+            item.status,
+            f"/api/accomplishments/{item.id}/download" if item.file_path else None,
+        ))
+
+    return grouped
 
 
 @router.post("/submissions", response_model=SubmissionOut)
@@ -416,7 +502,10 @@ def download_submission(submission_id: int, db: Session = Depends(get_db), user:
     submission = db.get(ResearchSubmission, submission_id)
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found.")
-    if user.role != "admin" and submission.submitter_id != user.id and submission.status != "Approved":
+    faculty_match = user.role == "faculty" and (
+        _text_mentions_user(submission.authors, user) or _text_mentions_user(submission.adviser, user)
+    )
+    if user.role != "admin" and submission.submitter_id != user.id and not faculty_match and submission.status != "Approved":
         raise HTTPException(status_code=403, detail="You cannot access this file.")
     return SignedUrlOut(url=signed_url(submission.file_path), expires_in=300)
 
@@ -480,7 +569,7 @@ def update_submission(
 
 
 @router.get("/accomplishments", response_model=list[AccomplishmentOut])
-def list_accomplishments(report_type: str | None = None, mine: bool = False, db: Session = Depends(get_db), user: User = Depends(require_approved)):
+def list_accomplishments(report_type: str | None = None, mine: bool = False, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     query = _accomplishment_query(db)
     if report_type:
         query = query.filter(AccomplishmentReport.report_type == report_type)
@@ -503,7 +592,7 @@ def create_accomplishment(
     link: str | None = Form(None),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_approved),
+    user: User = Depends(require_admin),
 ):
     if report_type not in {"presentation", "publication", "utilization"}:
         raise HTTPException(status_code=400, detail="Invalid report type.")
@@ -552,7 +641,7 @@ def update_accomplishment(
     link: str | None = Form(None),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_approved),
+    user: User = Depends(require_admin),
 ):
     item = db.get(AccomplishmentReport, report_id)
     if not item:
@@ -581,7 +670,7 @@ def update_accomplishment(
 
 
 @router.delete("/accomplishments/{report_id}")
-def delete_accomplishment(report_id: int, db: Session = Depends(get_db), user: User = Depends(require_approved)):
+def delete_accomplishment(report_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     item = db.get(AccomplishmentReport, report_id)
     if not item:
         raise HTTPException(status_code=404, detail="Record not found.")

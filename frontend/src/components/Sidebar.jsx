@@ -75,11 +75,7 @@ const facultyMenuGroups = [
     items: [
       ["/my-submissions", Library, "My Researches"],
       ["/upload", FileUp, "Upload Research"],
-      ["/accomplishment-reports", Layers, "Accomplishment Reports", [
-        ["/accomplishment-reports/presentation", Presentation, "Presentation"],
-        ["/accomplishment-reports/publication", ScrollText, "Publication"],
-        ["/accomplishment-reports/utilization", BookOpenCheck, "Utilization"]
-      ]],
+      ["/reports/dashboard", BarChart3, "Reports Dashboard"],
       ["/notifications", Bell, "Notifications"],
       ["/profile", UserCog, "My Profile"]
     ]
