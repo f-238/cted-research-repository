@@ -1,21 +1,29 @@
 import { BarChart3, BookOpenCheck, FileSpreadsheet, Presentation, Printer, ScrollText, Trophy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import EmptyState from "../components/EmptyState";
+import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 
 export default function ReportsDashboard() {
+  const { user, isAdmin } = useAuth();
   const [summary, setSummary] = useState({ presentations: 0, publications: 0, utilizations: 0 });
+  const [mySummary, setMySummary] = useState({ researches: 0, presentations: 0, publications: 0, utilizations: 0 });
   const [trendData, setTrendData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([
+    const requests = [
       api.get("/api/dashboard/report-summary"),
       api.get("/api/reports/trends")
-    ]).then(([summaryData, trends]) => {
+    ];
+    if (user?.role === "faculty") requests.push(api.get("/api/faculty/accomplishment-summary"));
+
+    Promise.all(requests).then(([summaryData, trends, facultySummary]) => {
       setSummary(summaryData);
+      if (facultySummary) setMySummary(facultySummary);
       setTrendData(trends.map((item) => ({
         year: item.school_year,
         presentations: item.presentations,
@@ -23,7 +31,7 @@ export default function ReportsDashboard() {
         utilizations: item.utilizations
       })));
     }).catch((err) => setError(err.message)).finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   const totals = useMemo(() => ({
     presentations: summary.presentations,
@@ -42,13 +50,28 @@ export default function ReportsDashboard() {
           <h1 className="mt-1 text-3xl font-extrabold text-[#071B4D]">Research Accomplishment Dashboard</h1>
           <p className="mt-2 text-sm text-slate-500">Database-driven analytics for CTED research accomplishments and outputs.</p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        {isAdmin && <div className="flex flex-wrap gap-3">
           <button className="btn-secondary"><FileSpreadsheet size={17} /> Export</button>
           <button className="btn-secondary"><Printer size={17} /> Print</button>
-        </div>
+        </div>}
       </div>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
+
+      {user?.role === "faculty" && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-2xl font-extrabold text-[#071B4D]">My Accomplishments</h2>
+            <p className="mt-1 text-sm text-slate-500">Research-related records where your name appears as author, adviser, researcher, contributor, or associated faculty.</p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <FacultySummaryCard title="My Researches" value={mySummary.researches} icon={Trophy} to="/my-submissions?type=research_submissions" button="View My Researches" />
+            <FacultySummaryCard title="My Presentations" value={mySummary.presentations} icon={Presentation} to="/my-submissions?type=presentations" button="View My Presentations" />
+            <FacultySummaryCard title="My Publications" value={mySummary.publications} icon={ScrollText} to="/my-submissions?type=publications" button="View My Publications" />
+            <FacultySummaryCard title="My Utilizations" value={mySummary.utilizations} icon={BookOpenCheck} to="/my-submissions?type=utilizations" button="View My Utilizations" />
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard title="Total Presentations" value={totals.presentations} icon={Presentation} />
@@ -86,6 +109,19 @@ export default function ReportsDashboard() {
         <EmptyState title="No chart data available yet." body="Charts will appear after real presentation, publication, or utilization records are created." />
       )}
     </div>
+  );
+}
+
+function FacultySummaryCard({ title, value, icon: Icon, to, button }) {
+  return (
+    <article className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-[0_16px_42px_rgba(7,27,77,0.07)]">
+      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#F5F9FF] text-[#0B4EA2] ring-1 ring-blue-100">
+        <Icon size={25} />
+      </div>
+      <p className="mt-5 text-sm font-bold text-slate-500">{title}</p>
+      <p className="mt-2 text-4xl font-extrabold text-[#071B4D]">{value}</p>
+      <Link to={to} className="btn-secondary mt-4 w-full">{button}</Link>
+    </article>
   );
 }
 

@@ -1,5 +1,6 @@
 import { Edit3, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
@@ -14,6 +15,7 @@ const facultyGroups = [
 
 export default function MySubmissions() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [facultyResults, setFacultyResults] = useState(defaultFacultyResults());
   const [courses, setCourses] = useState([]);
@@ -82,7 +84,7 @@ export default function MySubmissions() {
       <h1 className="text-2xl font-bold">My Researches</h1>
       {message && <div className="mt-4 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{message}</div>}
       {user?.role === "faculty" ? (
-        <FacultyResearchGroups results={facultyResults} />
+        <FacultyResearchGroups results={facultyResults} activeType={searchParams.get("type") || ""} />
       ) : (
         <>
       <div className="mt-5 grid gap-4">
@@ -152,15 +154,16 @@ export default function MySubmissions() {
   );
 }
 
-function FacultyResearchGroups({ results }) {
+function FacultyResearchGroups({ results, activeType }) {
   const total = facultyGroups.reduce((sum, [key]) => sum + (results[key]?.length || 0), 0);
+  const visibleGroups = activeType ? facultyGroups.filter(([key]) => key === activeType) : facultyGroups;
   if (!total) {
     return <div className="mt-4"><EmptyState title="No matched research records yet." body="Records will appear here when your name is listed as an author, researcher, adviser, or contributor." /></div>;
   }
 
   return (
     <div className="mt-5 space-y-5">
-      {facultyGroups.map(([key, label]) => (
+      {visibleGroups.map(([key, label]) => (
         <section key={key} className="panel overflow-hidden">
           <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-white px-5 py-4">
             <h2 className="font-extrabold text-[#071B4D]">{label}</h2>

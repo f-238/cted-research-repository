@@ -153,6 +153,13 @@ class FacultyResearchResultsOut(BaseModel):
     utilizations: list[FacultyResearchItemOut]
 
 
+class FacultyAccomplishmentSummaryOut(BaseModel):
+    researches: int
+    presentations: int
+    publications: int
+    utilizations: int
+
+
 class DashboardStats(BaseModel):
     course_id: int
     course_name: str

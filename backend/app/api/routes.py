@@ -9,7 +9,7 @@ from app.api.deps import require_admin, require_approved
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.entities import AccomplishmentReport, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
-from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
+from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
 from app.core.config import get_settings
@@ -323,6 +323,25 @@ def faculty_my_researches(db: Session = Depends(get_db), user: User = Depends(re
         ))
 
     return grouped
+
+
+@router.get("/faculty/accomplishment-summary", response_model=FacultyAccomplishmentSummaryOut)
+def faculty_accomplishment_summary(db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    if user.role != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty access required.")
+
+    researches = db.query(func.count(ResearchSubmission.id)).filter(_submission_faculty_match(user)).scalar() or 0
+    rows = db.query(
+        AccomplishmentReport.report_type,
+        func.count(AccomplishmentReport.id),
+    ).filter(_accomplishment_faculty_match(user)).group_by(AccomplishmentReport.report_type).all()
+    counts = dict(rows)
+    return FacultyAccomplishmentSummaryOut(
+        researches=researches,
+        presentations=counts.get("presentation", 0),
+        publications=counts.get("publication", 0),
+        utilizations=counts.get("utilization", 0),
+    )
 
 
 @router.post("/submissions", response_model=SubmissionOut)
