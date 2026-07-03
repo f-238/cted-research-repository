@@ -16,9 +16,8 @@ import {
   UserCog
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getDisplayUser } from "../lib/userDisplay";
 import logo from "../assets/cted-logo.png";
 
 const menuGroups = [
@@ -45,8 +44,7 @@ const menuGroups = [
   {
     label: "Reports",
     items: [
-      ["/reports/dashboard", BarChart3, "Reports Dashboard"],
-      ["/reports/annual-trends", BarChart3, "Annual Trends"]
+      ["/reports/dashboard", BarChart3, "Reports Dashboard"]
     ]
   },
   {
@@ -59,10 +57,8 @@ const menuGroups = [
 ];
 
 export default function Sidebar() {
-  const { user, isAdmin, logout } = useAuth();
-  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [openSections, setOpenSections] = useState({ "Accomplishment Reports": true, Reports: true });
-  const display = getDisplayUser(user);
   const groups = menuGroups.map((group) => ({
     ...group,
     items: group.items.filter(([to]) => isAdmin || !["/admin", "/pending-reviews", "/users", "/reports"].includes(to))
@@ -144,24 +140,6 @@ export default function Sidebar() {
             Repository services online
           </div>
         </div>
-        <button
-          onClick={() => { logout(); navigate("/login"); }}
-          className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left text-[#071B4D] shadow-xl transition hover:-translate-y-0.5"
-          title="Logout"
-        >
-          {display.avatarUrl ? (
-            <img src={display.avatarUrl} alt="Profile" className="h-12 w-12 rounded-full bg-[#F5F9FF] object-cover ring-1 ring-blue-100" />
-          ) : (
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-[#F5F9FF] text-lg font-extrabold text-[#0B4EA2] ring-1 ring-blue-100">
-              {display.initial}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{display.name}</p>
-            <p className="truncate text-xs capitalize text-slate-500">{display.role}</p>
-          </div>
-          <ChevronDown size={18} className="text-[#0B4EA2]" />
-        </button>
       </div>
     </aside>
   );
