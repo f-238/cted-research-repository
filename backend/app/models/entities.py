@@ -27,6 +27,7 @@ class User(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("courses.id"), nullable=True)
     section: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    profile_image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     course = relationship("Course")
     submissions = relationship("ResearchSubmission", back_populates="submitter")

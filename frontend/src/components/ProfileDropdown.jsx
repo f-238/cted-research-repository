@@ -38,7 +38,7 @@ export default function ProfileDropdown() {
         onClick={() => setOpen((value) => !value)}
         className="flex h-14 items-center gap-3 rounded-2xl border border-[#E5E7EB] bg-white py-2 pl-2 pr-3 text-left transition hover:bg-blue-50 sm:min-w-[218px]"
       >
-        <Avatar initial={display.initial} />
+        <Avatar initial={display.initial} src={display.avatarUrl} />
         <div className="hidden min-w-0 flex-1 sm:block">
           <p className="truncate text-sm font-extrabold text-[#071B4D]">{display.name}</p>
           <p className="truncate text-xs font-medium text-slate-500">{display.role}</p>
@@ -52,7 +52,7 @@ export default function ProfileDropdown() {
         }`}
       >
         <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-3 py-3">
-          <Avatar initial={display.initial} large />
+          <Avatar initial={display.initial} src={display.avatarUrl} large />
           <div>
             <p className="font-extrabold text-[#071B4D]">{display.name}</p>
             <p className="text-xs font-medium text-slate-500">{display.role}</p>
@@ -87,9 +87,13 @@ export default function ProfileDropdown() {
   );
 }
 
-function Avatar({ initial, large = false }) {
+function Avatar({ initial, src, large = false }) {
+  const size = large ? "h-12 w-12 text-lg" : "h-10 w-10 text-sm";
+  if (src) {
+    return <img src={src} alt="Profile" className={`${size} shrink-0 rounded-full object-cover shadow-sm ring-4 ring-blue-50`} />;
+  }
   return (
-    <div className={`${large ? "h-12 w-12 text-lg" : "h-10 w-10 text-sm"} grid shrink-0 place-items-center rounded-full bg-[#0B4EA2] font-extrabold text-white shadow-sm ring-4 ring-blue-50`}>
+    <div className={`${size} grid shrink-0 place-items-center rounded-full bg-[#0B4EA2] font-extrabold text-white shadow-sm ring-4 ring-blue-50`}>
       {initial}
     </div>
   );

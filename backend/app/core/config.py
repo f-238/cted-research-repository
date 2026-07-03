@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     supabase_bucket: str = "research-files"
+    supabase_profile_images_bucket: str = "profile-images"
 
     class Config:
         env_file = ".env"

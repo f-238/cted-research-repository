@@ -11,7 +11,8 @@ from app.models.entities import AccomplishmentReport, Course, FormatCheckResult,
 from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
-from app.services.storage import delete_file, signed_url, store_upload
+from app.core.config import get_settings
+from app.services.storage import delete_file, signed_url, store_profile_image, store_upload
 
 router = APIRouter(prefix="/api")
 
@@ -84,6 +85,22 @@ def _search_result(id: int, title: str, type: str, author: str, school_year: str
     )
 
 
+def _user_out(user: User) -> UserOut:
+    avatar_url = None
+    if user.profile_image_path:
+        try:
+            avatar_url = signed_url(
+                user.profile_image_path,
+                expires_in=3600,
+                bucket=get_settings().supabase_profile_images_bucket,
+            )
+        except HTTPException:
+            avatar_url = None
+    data = UserOut.model_validate(user).model_dump()
+    data["avatar_url"] = avatar_url
+    return UserOut(**data)
+
+
 @router.post("/auth/register", response_model=UserOut)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(func.lower(User.email) == payload.email.lower()).first():
@@ -94,7 +111,8 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     notify_admins(db, "New account registration", f"{user.full_name} registered as {user.role}.", "/users")
     db.commit()
-    return user
+    db.refresh(user)
+    return _user_out(user)
 
 
 @router.post("/auth/login", response_model=Token)
@@ -104,12 +122,12 @@ def login(email: str = Form(), password: str = Form(), db: Session = Depends(get
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     if not user.is_active or user.account_status != "approved":
         raise HTTPException(status_code=403, detail="Account is not approved or active.")
-    return Token(access_token=create_access_token(str(user.id)), user=user)
+    return Token(access_token=create_access_token(str(user.id)), user=_user_out(user))
 
 
 @router.get("/auth/me", response_model=UserOut)
 def me(user: User = Depends(require_approved)):
-    return user
+    return _user_out(user)
 
 
 @router.get("/courses", response_model=list[CourseOut])
@@ -604,9 +622,56 @@ def download_template(template_id: int, db: Session = Depends(get_db)):
     return SignedUrlOut(url=signed_url(template.file_path), expires_in=300)
 
 
+@router.get("/users/me", response_model=UserOut)
+def get_my_user(user: User = Depends(require_approved)):
+    return _user_out(user)
+
+
+@router.patch("/users/me", response_model=UserOut)
+def update_my_user(
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
+    section: str | None = Form(None),
+    course_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_approved),
+):
+    if full_name is not None and full_name.strip():
+        user.full_name = full_name.strip()
+    if email is not None and email.strip():
+        normalized_email = email.strip().lower()
+        existing = db.query(User).filter(func.lower(User.email) == normalized_email, User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Email is already registered.")
+        user.email = normalized_email
+    if section is not None:
+        user.section = section.strip() or None
+    if course_id is not None:
+        user.course_id = course_id
+    db.commit()
+    db.refresh(user)
+    return _user_out(user)
+
+
+@router.post("/users/me/profile-image", response_model=UserOut)
+def upload_my_profile_image(
+    file: UploadFile = File(),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_approved),
+):
+    old_path = user.profile_image_path
+    storage_key = store_profile_image(file, user.id)
+    user.profile_image_path = storage_key
+    db.commit()
+    db.refresh(user)
+    if old_path and old_path != storage_key:
+        delete_file(old_path, bucket=get_settings().supabase_profile_images_bucket)
+    return _user_out(user)
+
+
 @router.get("/users", response_model=list[UserOut])
 def users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    return db.query(User).order_by(User.created_at.desc()).all()
+    return [_user_out(user) for user in db.query(User).order_by(User.created_at.desc()).all()]
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -620,7 +685,8 @@ def update_user(user_id: int, account_status: str | None = Form(None), is_active
     if is_active is not None:
         user.is_active = is_active
     db.commit()
-    return user
+    db.refresh(user)
+    return _user_out(user)
 
 
 @router.delete("/users/{user_id}")

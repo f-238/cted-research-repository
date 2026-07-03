@@ -14,6 +14,7 @@ def run_startup_migrations(engine: Engine) -> None:
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
     _add_file_metadata_columns(engine, inspector, table_names)
+    _add_user_profile_image_column(engine, inspector, table_names)
 
     if not engine.url.get_backend_name().startswith("sqlite"):
         return
@@ -99,3 +100,13 @@ def _add_file_metadata_columns(engine: Engine, inspector, table_names: list[str]
                 connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN mime_type VARCHAR(120)"))
             if "file_size" not in columns:
                 connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN file_size INTEGER"))
+
+
+def _add_user_profile_image_column(engine: Engine, inspector, table_names: list[str]) -> None:
+    if "users" not in table_names:
+        return
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    if "profile_image_path" in columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE users ADD COLUMN profile_image_path VARCHAR(500)"))

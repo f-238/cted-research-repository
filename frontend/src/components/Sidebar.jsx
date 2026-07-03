@@ -149,9 +149,13 @@ export default function Sidebar() {
           className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left text-[#071B4D] shadow-xl transition hover:-translate-y-0.5"
           title="Logout"
         >
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-[#F5F9FF] text-lg font-extrabold text-[#0B4EA2] ring-1 ring-blue-100">
-            {display.initial}
-          </div>
+          {display.avatarUrl ? (
+            <img src={display.avatarUrl} alt="Profile" className="h-12 w-12 rounded-full bg-[#F5F9FF] object-cover ring-1 ring-blue-100" />
+          ) : (
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-[#F5F9FF] text-lg font-extrabold text-[#0B4EA2] ring-1 ring-blue-100">
+              {display.initial}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{display.name}</p>
             <p className="truncate text-xs capitalize text-slate-500">{display.role}</p>

@@ -27,6 +27,9 @@ class UserOut(BaseModel):
     is_active: bool
     course_id: int | None
     section: str | None
+    profile_image_path: str | None = None
+    avatar_url: str | None = None
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
