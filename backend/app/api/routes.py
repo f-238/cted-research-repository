@@ -690,12 +690,32 @@ def update_user(user_id: int, account_status: str | None = Form(None), is_active
 
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account while logged in.")
+    if user.role == "admin":
+        admin_count = db.query(func.count(User.id)).filter(User.role == "admin").scalar() or 0
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="You cannot delete the last remaining admin account.")
+
+    related_records = [
+        db.query(func.count(ResearchSubmission.id)).filter(ResearchSubmission.submitter_id == user.id).scalar() or 0,
+        db.query(func.count(AccomplishmentReport.id)).filter(AccomplishmentReport.owner_id == user.id).scalar() or 0,
+        db.query(func.count(ReviewRemark.id)).filter(ReviewRemark.reviewer_id == user.id).scalar() or 0,
+        db.query(func.count(Template.id)).filter(Template.uploaded_by_id == user.id).scalar() or 0,
+    ]
+    if any(related_records):
+        raise HTTPException(status_code=409, detail="This user has related records and cannot be deleted unless records are reassigned or removed.")
+
+    profile_image_path = user.profile_image_path
+    db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)
     db.delete(user)
     db.commit()
+    if profile_image_path:
+        delete_file(profile_image_path, bucket=get_settings().supabase_profile_images_bucket)
     return {"ok": True}
 
 
