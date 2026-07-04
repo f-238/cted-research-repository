@@ -20,6 +20,7 @@ import AccountSettings from "./pages/AccountSettings";
 import ChangePassword from "./pages/ChangePassword";
 import AccomplishmentReports from "./pages/AccomplishmentReports";
 import AccomplishmentReportTable from "./pages/AccomplishmentReportTable";
+import CompletedPapers from "./pages/CompletedPapers";
 import SearchResults from "./pages/SearchResults";
 import { dashboardPathForUser } from "./lib/authRoutes";
 
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/accomplishment-reports/presentation" element={<AccomplishmentReportTable type="presentation" />} />
         <Route path="/accomplishment-reports/publication" element={<AccomplishmentReportTable type="publication" />} />
         <Route path="/accomplishment-reports/utilization" element={<AccomplishmentReportTable type="utilization" />} />
+        <Route path="/accomplishment-reports/completed-papers" element={<CompletedPapers />} />
       </Route>
       <Route element={<Protected roles={["admin", "faculty"]} />}>
         <Route path="/reports/dashboard" element={<ReportsDashboard />} />

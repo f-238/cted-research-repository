@@ -164,6 +164,7 @@ class FacultyResearchResultsOut(BaseModel):
     presentations: list[FacultyResearchItemOut]
     publications: list[FacultyResearchItemOut]
     utilizations: list[FacultyResearchItemOut]
+    completed_papers: list[FacultyResearchItemOut]
 
 
 class FacultyAccomplishmentSummaryOut(BaseModel):
@@ -171,6 +172,7 @@ class FacultyAccomplishmentSummaryOut(BaseModel):
     presentations: int
     publications: int
     utilizations: int
+    completed_papers: int
 
 
 class DashboardStats(BaseModel):
@@ -216,10 +218,36 @@ class AccomplishmentOut(BaseModel):
         from_attributes = True
 
 
+class CompletedPaperOut(BaseModel):
+    id: int
+    title: str
+    authors: str
+    adviser: str
+    program_id: int
+    program: CourseOut
+    school_year: str
+    submission_year: int
+    completion_date: date
+    abstract: str
+    keywords: str
+    remarks: str | None = None
+    status: str
+    original_filename: str | None
+    mime_type: str | None = None
+    file_size: int | None = None
+    owner: UserOut | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class ReportSummary(BaseModel):
     presentations: int
     publications: int
     utilizations: int
+    completed_papers: int
 
 
 class ReportTrend(BaseModel):
@@ -227,6 +255,7 @@ class ReportTrend(BaseModel):
     presentations: int
     publications: int
     utilizations: int
+    completed_papers: int
 
 
 class SignedUrlOut(BaseModel):

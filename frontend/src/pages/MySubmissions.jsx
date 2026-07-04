@@ -10,13 +10,15 @@ const facultyGroups = [
   ["research_submissions", "Research Submissions"],
   ["presentations", "Presentations"],
   ["publications", "Publications"],
-  ["utilizations", "Utilizations"]
+  ["utilizations", "Utilizations"],
+  ["completed_papers", "Completed Papers"]
 ];
 
 export default function MySubmissions() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState([]);
+  const [completedPapers, setCompletedPapers] = useState([]);
   const [facultyResults, setFacultyResults] = useState(defaultFacultyResults());
   const [courses, setCourses] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -28,7 +30,12 @@ export default function MySubmissions() {
     if (user?.role === "faculty") {
       setFacultyResults(await api.get("/api/faculty/my-researches"));
     } else {
-      setItems(await api.get("/api/submissions?mine=true"));
+      const [submissions, papers] = await Promise.all([
+        api.get("/api/submissions?mine=true"),
+        api.get("/api/completed-papers")
+      ]);
+      setItems(submissions);
+      setCompletedPapers(papers);
     }
   }
 
@@ -120,6 +127,7 @@ export default function MySubmissions() {
         ))}
       </div>
       {!items.length && <div className="mt-4"><EmptyState title="No research submissions yet." body="Upload your first research document to start the review process." /></div>}
+      <ReadOnlyCompletedPapers items={completedPapers} />
         </>
       )}
 
@@ -206,10 +214,43 @@ function defaultFacultyResults() {
     research_submissions: [],
     presentations: [],
     publications: [],
-    utilizations: []
+    utilizations: [],
+    completed_papers: []
   };
 }
 
 function labelType(value) {
   return (value || "research").replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+function ReadOnlyCompletedPapers({ items }) {
+  if (!items.length) return null;
+  return (
+    <section className="panel mt-5 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-white px-5 py-4">
+        <h2 className="font-extrabold text-[#071B4D]">Completed Papers</h2>
+        <span className="rounded-full bg-[#F5F9FF] px-3 py-1 text-xs font-bold text-[#0B4EA2]">{items.length}</span>
+      </div>
+      <div className="divide-y divide-[#E5E7EB]">
+        {items.map((item) => (
+          <article key={`completed-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <h3 className="font-bold text-[#071B4D]">{item.title}</h3>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                <span>Completed Paper</span>
+                <span>{item.program?.name}</span>
+                <span>School Year {item.school_year}</span>
+                <span>Submission Year {item.submission_year}</span>
+                <span>{item.completion_date}</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <StatusBadge status={item.status} />
+              {item.original_filename && <button className="btn-secondary" onClick={() => openSignedUrl(`/api/completed-papers/${item.id}/download`)}>View/Download</button>}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }

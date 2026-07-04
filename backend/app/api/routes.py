@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.deps import require_admin, require_approved
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
-from app.models.entities import AccomplishmentReport, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
-from app.schemas.dto import AccomplishmentOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
+from app.models.entities import AccomplishmentReport, CompletedPaper, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
+from app.schemas.dto import AccomplishmentOut, CompletedPaperOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
 from app.core.config import get_settings
@@ -40,6 +40,13 @@ def _latest_remark(item: ResearchSubmission) -> str | None:
 
 def _accomplishment_query(db: Session):
     return db.query(AccomplishmentReport).options(joinedload(AccomplishmentReport.owner))
+
+
+def _completed_paper_query(db: Session):
+    return db.query(CompletedPaper).options(
+        joinedload(CompletedPaper.program),
+        joinedload(CompletedPaper.owner),
+    )
 
 
 def _text_mentions_user(value: str | None, user: User) -> bool:
@@ -100,6 +107,15 @@ def _accomplishment_faculty_match(user: User):
     return or_(
         AccomplishmentReport.researcher.ilike(needle),
         AccomplishmentReport.organization.ilike(needle),
+    )
+
+
+def _completed_paper_faculty_match(user: User):
+    needle = _faculty_name_match(user)
+    return or_(
+        CompletedPaper.authors.ilike(needle),
+        CompletedPaper.adviser.ilike(needle),
+        CompletedPaper.remarks.ilike(needle),
     )
 
 
@@ -248,10 +264,12 @@ def report_summary(db: Session = Depends(get_db), user: User = Depends(require_a
         raise HTTPException(status_code=403, detail="Faculty or admin access required.")
     rows = db.query(AccomplishmentReport.report_type, func.count(AccomplishmentReport.id)).group_by(AccomplishmentReport.report_type).all()
     counts = dict(rows)
+    completed_count = db.query(func.count(CompletedPaper.id)).scalar() or 0
     return ReportSummary(
         presentations=counts.get("presentation", 0),
         publications=counts.get("publication", 0),
         utilizations=counts.get("utilization", 0),
+        completed_papers=completed_count,
     )
 
 
@@ -268,12 +286,20 @@ def report_trends(db: Session = Depends(get_db), user: User = Depends(require_ap
     for school_year, report_type, count in rows:
         grouped.setdefault(school_year, {})
         grouped[school_year][report_type] = count
+    completed_rows = db.query(
+        CompletedPaper.school_year,
+        func.count(CompletedPaper.id),
+    ).group_by(CompletedPaper.school_year).all()
+    for school_year, count in completed_rows:
+        grouped.setdefault(school_year, {})
+        grouped[school_year]["completed_papers"] = count
     return [
         ReportTrend(
             school_year=school_year,
             presentations=counts.get("presentation", 0),
             publications=counts.get("publication", 0),
             utilizations=counts.get("utilization", 0),
+            completed_papers=counts.get("completed_papers", 0),
         )
         for school_year, counts in sorted(grouped.items())
     ]
@@ -338,12 +364,16 @@ def faculty_my_researches(db: Session = Depends(get_db), user: User = Depends(re
         _accomplishment_faculty_match(user),
         AccomplishmentReport.source_submission_id.is_(None),
     ).order_by(AccomplishmentReport.event_date.desc()).all()
+    completed_papers = _completed_paper_query(db).filter(
+        _completed_paper_faculty_match(user),
+    ).order_by(CompletedPaper.completion_date.desc()).all()
 
     grouped = FacultyResearchResultsOut(
         research_submissions=[],
         presentations=[],
         publications=[],
         utilizations=[],
+        completed_papers=[],
     )
 
     submission_labels = {
@@ -393,6 +423,24 @@ def faculty_my_researches(db: Session = Depends(get_db), user: User = Depends(re
             f"/api/accomplishments/{item.id}/download" if item.file_path else None,
         ))
 
+    for item in completed_papers:
+        grouped.completed_papers.append(_faculty_item(
+            item.id,
+            item.title,
+            "Completed Paper",
+            item.school_year,
+            item.completion_date,
+            item.status,
+            f"/api/completed-papers/{item.id}/download" if item.file_path else None,
+            authors=item.authors,
+            adviser=item.adviser,
+            course_id=item.program_id,
+            course_name=item.program.name if item.program else None,
+            submission_year=item.submission_year,
+            keywords=item.keywords,
+            abstract=item.abstract,
+        ))
+
     return grouped
 
 
@@ -419,6 +467,7 @@ def faculty_accomplishment_summary(db: Session = Depends(get_db), user: User = D
         presentations=counts.get("presentation", 0),
         publications=counts.get("publication", 0),
         utilizations=counts.get("utilization", 0),
+        completed_papers=db.query(func.count(CompletedPaper.id)).filter(_completed_paper_faculty_match(user)).scalar() or 0,
     )
 
 
@@ -815,6 +864,184 @@ def download_accomplishment(report_id: int, db: Session = Depends(get_db), user:
     if not item or not item.file_path:
         raise HTTPException(status_code=404, detail="File not found.")
     _ensure_report_access(item, user)
+    return SignedUrlOut(url=signed_url(item.file_path), expires_in=300)
+
+
+def _completed_paper_access_query(query, user: User):
+    if user.role == "admin":
+        return query
+    if user.role == "faculty":
+        return query.filter(_completed_paper_faculty_match(user))
+    return query.filter(CompletedPaper.owner_id == user.id)
+
+
+def _ensure_completed_paper_access(item: CompletedPaper, user: User) -> None:
+    if user.role == "admin":
+        return
+    if user.role == "faculty" and (
+        _text_mentions_user(item.authors, user)
+        or _text_mentions_user(item.adviser, user)
+        or _text_mentions_user(item.remarks, user)
+    ):
+        return
+    if item.owner_id == user.id:
+        return
+    raise HTTPException(status_code=403, detail="You cannot access this completed paper.")
+
+
+@router.get("/completed-papers", response_model=list[CompletedPaperOut])
+def list_completed_papers(
+    search: str | None = None,
+    program_id: int | None = None,
+    school_year: str | None = None,
+    submission_year: int | None = None,
+    adviser: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_approved),
+):
+    query = _completed_paper_access_query(_completed_paper_query(db), user)
+    if search:
+        needle = f"%{search}%"
+        query = query.filter(or_(
+            CompletedPaper.title.ilike(needle),
+            CompletedPaper.authors.ilike(needle),
+            CompletedPaper.adviser.ilike(needle),
+            CompletedPaper.keywords.ilike(needle),
+            CompletedPaper.abstract.ilike(needle),
+            CompletedPaper.remarks.ilike(needle),
+            CompletedPaper.school_year.ilike(needle),
+            CompletedPaper.program.has(or_(Course.name.ilike(needle), Course.code.ilike(needle))),
+        ))
+    if program_id:
+        query = query.filter(CompletedPaper.program_id == program_id)
+    if school_year:
+        query = query.filter(CompletedPaper.school_year == school_year)
+    if submission_year:
+        query = query.filter(CompletedPaper.submission_year == submission_year)
+    if adviser:
+        query = query.filter(CompletedPaper.adviser.ilike(f"%{adviser}%"))
+    return query.order_by(CompletedPaper.completion_date.desc(), CompletedPaper.title).all()
+
+
+@router.post("/completed-papers", response_model=CompletedPaperOut)
+def create_completed_paper(
+    title: str = Form(),
+    authors: str = Form(),
+    adviser: str = Form(),
+    program_id: int = Form(),
+    school_year: str = Form(),
+    submission_year: int = Form(),
+    completion_date: date = Form(),
+    abstract: str = Form(),
+    keywords: str = Form(),
+    remarks: str | None = Form(None),
+    status: str = Form("Completed"),
+    owner_id: int | None = Form(None),
+    file: UploadFile | None = File(None),
+    uploaded_file: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    path = filename = mime_type = None
+    file_size = None
+    upload = file or uploaded_file
+    if upload:
+        stored = store_upload(upload, "accomplishments", {".pdf", ".docx"})
+        path = stored.storage_key
+        filename = stored.original_filename
+        mime_type = stored.mime_type
+        file_size = stored.file_size
+        Path(stored.temp_path).unlink(missing_ok=True)
+    item = CompletedPaper(
+        title=title,
+        authors=authors,
+        adviser=adviser,
+        program_id=program_id,
+        school_year=school_year,
+        submission_year=submission_year,
+        completion_date=completion_date,
+        abstract=abstract,
+        keywords=keywords,
+        remarks=remarks,
+        status=status,
+        file_path=path,
+        original_filename=filename,
+        mime_type=mime_type,
+        file_size=file_size,
+        owner_id=owner_id or admin.id,
+    )
+    db.add(item)
+    db.commit()
+    return _completed_paper_query(db).filter(CompletedPaper.id == item.id).first()
+
+
+@router.patch("/completed-papers/{paper_id}", response_model=CompletedPaperOut)
+def update_completed_paper(
+    paper_id: int,
+    title: str = Form(),
+    authors: str = Form(),
+    adviser: str = Form(),
+    program_id: int = Form(),
+    school_year: str = Form(),
+    submission_year: int = Form(),
+    completion_date: date = Form(),
+    abstract: str = Form(),
+    keywords: str = Form(),
+    remarks: str | None = Form(None),
+    status: str = Form("Completed"),
+    owner_id: int | None = Form(None),
+    file: UploadFile | None = File(None),
+    uploaded_file: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    item = db.get(CompletedPaper, paper_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Completed paper not found.")
+    upload = file or uploaded_file
+    if upload:
+        old_key = item.file_path
+        stored = store_upload(upload, "accomplishments", {".pdf", ".docx"})
+        item.file_path = stored.storage_key
+        item.original_filename = stored.original_filename
+        item.mime_type = stored.mime_type
+        item.file_size = stored.file_size
+        Path(stored.temp_path).unlink(missing_ok=True)
+        delete_file(old_key)
+    item.title = title
+    item.authors = authors
+    item.adviser = adviser
+    item.program_id = program_id
+    item.school_year = school_year
+    item.submission_year = submission_year
+    item.completion_date = completion_date
+    item.abstract = abstract
+    item.keywords = keywords
+    item.remarks = remarks
+    item.status = status
+    item.owner_id = owner_id or item.owner_id or admin.id
+    db.commit()
+    return _completed_paper_query(db).filter(CompletedPaper.id == item.id).first()
+
+
+@router.delete("/completed-papers/{paper_id}")
+def delete_completed_paper(paper_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    item = db.get(CompletedPaper, paper_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Completed paper not found.")
+    file_path = item.file_path
+    db.delete(item)
+    db.commit()
+    delete_file(file_path)
+    return {"ok": True}
+
+
+@router.get("/completed-papers/{paper_id}/download", response_model=SignedUrlOut)
+def download_completed_paper(paper_id: int, db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    item = db.get(CompletedPaper, paper_id)
+    if not item or not item.file_path:
+        raise HTTPException(status_code=404, detail="File not found.")
+    _ensure_completed_paper_access(item, user)
     return SignedUrlOut(url=signed_url(item.file_path), expires_in=300)
 
 

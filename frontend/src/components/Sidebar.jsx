@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Database,
   ClipboardList,
+  FileCheck2,
   FileUp,
   Home,
   Library,
@@ -39,7 +40,8 @@ const adminMenuGroups = [
       ["/accomplishment-reports", Layers, "Accomplishment Reports", [
         ["/accomplishment-reports/presentation", Presentation, "Presentation"],
         ["/accomplishment-reports/publication", ScrollText, "Publication"],
-        ["/accomplishment-reports/utilization", BookOpenCheck, "Utilization"]
+        ["/accomplishment-reports/utilization", BookOpenCheck, "Utilization"],
+        ["/accomplishment-reports/completed-papers", FileCheck2, "Completed Papers"]
       ]]
     ]
   },
@@ -135,7 +137,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
                     <span className="flex-1">{label}</span>
                     <ChevronDown size={16} className={`transition ${openSections[label] ? "rotate-180" : ""}`} />
                   </button>
-                  <div className={`overflow-hidden transition-all duration-200 ${openSections[label] ? "mt-1 max-h-40 opacity-100" : "max-h-0 opacity-0"}`}>
+                  <div className={`overflow-hidden transition-all duration-200 ${openSections[label] ? "mt-1 max-h-56 opacity-100" : "max-h-0 opacity-0"}`}>
                     <div className="ml-5 space-y-1 border-l border-white/15 pl-3">
                       {children.map(([childTo, ChildIcon, childLabel]) => (
                         <NavLink

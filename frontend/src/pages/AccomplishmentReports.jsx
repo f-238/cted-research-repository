@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
-import { BookOpenCheck, Presentation, ScrollText } from "lucide-react";
+import { BookOpenCheck, FileCheck2, Presentation, ScrollText } from "lucide-react";
 
 const reportTypes = [
   ["/accomplishment-reports/presentation", Presentation, "Presentation", "Track research presentations, fora, and conference participation."],
   ["/accomplishment-reports/publication", ScrollText, "Publication", "Monitor published research outputs and scholarly dissemination."],
-  ["/accomplishment-reports/utilization", BookOpenCheck, "Utilization", "Record adopted, implemented, or community-utilized research outputs."]
+  ["/accomplishment-reports/utilization", BookOpenCheck, "Utilization", "Record adopted, implemented, or community-utilized research outputs."],
+  ["/accomplishment-reports/completed-papers", FileCheck2, "Completed Papers", "Manage completed research papers and final paper records."]
 ];
 
 export default function AccomplishmentReports() {
@@ -12,9 +13,9 @@ export default function AccomplishmentReports() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-extrabold text-[#071B4D]">Accomplishment Reports</h1>
-        <p className="mt-2 text-sm text-slate-500">Organize CTED research accomplishments by presentation, publication, and utilization.</p>
+        <p className="mt-2 text-sm text-slate-500">Organize CTED research accomplishments by presentation, publication, utilization, and completed papers.</p>
       </div>
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {reportTypes.map(([to, Icon, title, body]) => (
           <Link key={to} to={to} className="group rounded-[20px] border border-[#E5E7EB] bg-white p-6 shadow-[0_16px_42px_rgba(7,27,77,0.07)] transition hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(7,27,77,0.12)]">
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-[#F5F9FF] text-[#0B4EA2] ring-1 ring-blue-100">

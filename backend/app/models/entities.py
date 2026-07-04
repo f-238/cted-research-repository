@@ -96,6 +96,31 @@ class AccomplishmentReport(Base, TimestampMixin):
     owner = relationship("User")
 
 
+class CompletedPaper(Base, TimestampMixin):
+    __tablename__ = "completed_papers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(260), index=True)
+    authors: Mapped[str] = mapped_column(String(260), index=True)
+    adviser: Mapped[str] = mapped_column(String(160), index=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("courses.id"))
+    school_year: Mapped[str] = mapped_column(String(20), index=True)
+    submission_year: Mapped[int] = mapped_column(Integer, index=True)
+    completion_date: Mapped[date] = mapped_column(Date, index=True)
+    abstract: Mapped[str] = mapped_column(Text)
+    keywords: Mapped[str] = mapped_column(String(360))
+    remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(80), default="Completed")
+    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    original_filename: Mapped[Optional[str]] = mapped_column(String(260), nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    program = relationship("Course")
+    owner = relationship("User")
+
+
 class FormatCheckResult(Base, TimestampMixin):
     __tablename__ = "format_check_results"
 
