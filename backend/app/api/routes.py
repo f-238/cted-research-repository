@@ -538,6 +538,23 @@ def repository(
     return [_submission_out(item) for item in query.order_by(ResearchSubmission.title).all()]
 
 
+@router.delete("/research/{research_id}")
+def delete_research(research_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    submission = db.get(ResearchSubmission, research_id)
+    if not submission or submission.submission_type != "research":
+        raise HTTPException(status_code=404, detail="Research record not found.")
+
+    file_path = submission.file_path
+    db.query(AccomplishmentReport).filter(AccomplishmentReport.source_submission_id == submission.id).update(
+        {AccomplishmentReport.source_submission_id: None},
+        synchronize_session=False,
+    )
+    db.delete(submission)
+    db.commit()
+    delete_file(file_path)
+    return {"ok": True, "message": "Research deleted successfully."}
+
+
 @router.get("/programs/{program_id}/years", response_model=list[ProgramYearOut])
 def program_years(program_id: int, db: Session = Depends(get_db), _: User = Depends(require_approved)):
     rows = db.query(
