@@ -21,20 +21,20 @@ import ChangePassword from "./pages/ChangePassword";
 import AccomplishmentReports from "./pages/AccomplishmentReports";
 import AccomplishmentReportTable from "./pages/AccomplishmentReportTable";
 import SearchResults from "./pages/SearchResults";
-import StudentDashboard from "./pages/StudentDashboard";
+import { dashboardPathForUser } from "./lib/authRoutes";
 
 function Protected({ admin = false, roles = null }) {
   const { user, loading, isAdmin } = useAuth();
   if (loading) return <div className="p-8 text-sm text-slate-500">Loading application...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (admin && !isAdmin) return <Navigate to="/dashboard" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to={isAdmin ? "/admin" : "/dashboard"} replace />;
+  if (admin && !isAdmin) return <Navigate to={dashboardPathForUser(user)} replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={dashboardPathForUser(user)} replace />;
   return <AppShell />;
 }
 
 function RoleDashboard() {
-  const { isAdmin } = useAuth();
-  return isAdmin ? <Navigate to="/admin" replace /> : <StudentDashboard />;
+  const { user } = useAuth();
+  return <Navigate to={dashboardPathForUser(user)} replace />;
 }
 
 export default function App() {

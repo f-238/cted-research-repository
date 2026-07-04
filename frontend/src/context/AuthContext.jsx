@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { api, setToken as persistToken } from "../lib/api";
+import { flushSync } from "react-dom";
+import { api, getToken, setToken as persistToken } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -8,7 +9,18 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/api/auth/me").then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
+
+    api.get("/api/auth/me")
+      .then(setUser)
+      .catch(() => {
+        persistToken(null);
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   async function refreshUser() {
@@ -17,14 +29,28 @@ export function AuthProvider({ children }) {
     return data;
   }
 
-  async function login(email, password) {
+  async function login(email, password, remember = true) {
+    setLoading(true);
     const form = new FormData();
     form.append("email", email);
     form.append("password", password);
-    const data = await api.postForm("/api/auth/login", form);
-    persistToken(data.access_token);
-    setUser(data.user);
-    return data.user;
+    try {
+      const data = await api.postForm("/api/auth/login", form);
+      persistToken(data.access_token, remember);
+      const currentUser = await api.get("/api/auth/me");
+      flushSync(() => {
+        setUser(currentUser);
+        setLoading(false);
+      });
+      return currentUser;
+    } catch (err) {
+      persistToken(null);
+      flushSync(() => {
+        setUser(null);
+        setLoading(false);
+      });
+      throw err;
+    }
   }
 
   function updateUser(nextUser) {

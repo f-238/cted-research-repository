@@ -8,6 +8,7 @@ import {
   Home,
   Library,
   LogOut,
+  X,
   Presentation,
   ScrollText,
   Settings,
@@ -82,25 +83,41 @@ const facultyMenuGroups = [
   }
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [openSections, setOpenSections] = useState({ "Accomplishment Reports": true, Reports: true });
   const groups = isAdmin ? adminMenuGroups : user?.role === "faculty" ? facultyMenuGroups : studentMenuGroups;
 
   function handleLogout() {
+    onClose();
     logout();
     navigate("/login", { replace: true });
   }
 
   return (
-    <aside className="hidden min-h-screen w-[312px] shrink-0 border-r border-white/10 bg-gradient-to-b from-[#0B4EA2] via-[#083D81] to-[#062B63] px-5 py-6 text-white shadow-2xl lg:flex lg:flex-col">
-      <div className="flex items-center gap-4 rounded-2xl bg-white/8 p-3 ring-1 ring-white/10">
-        <img src={logo} alt="CTED logo" className="h-[66px] w-[66px] rounded-full bg-white object-cover p-1 shadow-lg" />
-        <div>
-          <p className="text-2xl font-extrabold leading-tight tracking-normal">CTED</p>
-          <p className="text-sm font-medium text-blue-100">Research Repository</p>
+    <aside
+      id="app-sidebar"
+      className={`fixed inset-y-0 left-0 z-50 flex w-[min(312px,86vw)] shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-gradient-to-b from-[#0B4EA2] via-[#083D81] to-[#062B63] px-5 py-6 text-white shadow-2xl transition-transform duration-300 ease-out lg:sticky lg:top-0 lg:z-auto lg:min-h-screen lg:w-[312px] lg:translate-x-0 ${
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-4 rounded-2xl bg-white/8 p-3 ring-1 ring-white/10">
+          <img src={logo} alt="CTED logo" className="h-[66px] w-[66px] rounded-full bg-white object-cover p-1 shadow-lg" />
+          <div>
+            <p className="text-2xl font-extrabold leading-tight tracking-normal">CTED</p>
+            <p className="text-sm font-medium text-blue-100">Research Repository</p>
+          </div>
         </div>
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/20 lg:hidden"
+          onClick={onClose}
+        >
+          <X size={22} strokeWidth={2.2} />
+        </button>
       </div>
 
       <nav className="mt-8 space-y-7">
@@ -124,6 +141,7 @@ export default function Sidebar() {
                         <NavLink
                           key={childTo}
                           to={childTo}
+                          onClick={onClose}
                           className={({ isActive }) =>
                             `flex min-h-10 items-center gap-2 rounded-lg px-3 text-[13px] font-semibold transition ${
                               isActive ? "bg-white text-[#0B4EA2]" : "text-blue-100 hover:bg-white/10 hover:text-white"
@@ -141,6 +159,7 @@ export default function Sidebar() {
                 <NavLink
                   key={to}
                   to={to}
+                  onClick={onClose}
                   className={({ isActive }) =>
                     `group flex min-h-[48px] items-center gap-3 rounded-xl px-3.5 text-[14px] font-semibold transition duration-200 ${
                       isActive

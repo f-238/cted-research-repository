@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { api } from "../lib/api";
 import ProfileDropdown from "./ProfileDropdown";
 
-export default function Topbar() {
+export default function Topbar({ onMenuClick = () => {} }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -46,9 +46,17 @@ export default function Topbar() {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex min-h-[84px] items-center justify-between border-b border-[#E5E7EB] bg-white/95 px-5 shadow-sm backdrop-blur lg:px-9">
+    <header className="sticky top-0 z-30 flex min-h-[84px] items-center justify-between border-b border-[#E5E7EB] bg-white/95 px-5 shadow-sm backdrop-blur lg:px-9">
       <div className="flex flex-1 items-center gap-4">
-        <Menu className="text-academic lg:hidden" size={26} />
+        <button
+          type="button"
+          aria-label="Open sidebar"
+          aria-controls="app-sidebar"
+          className="relative z-[60] grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[#E5E7EB] bg-white text-academic shadow-sm transition hover:bg-blue-50 lg:hidden"
+          onClick={onMenuClick}
+        >
+          <Menu size={26} strokeWidth={2.2} />
+        </button>
         <form className="relative w-full max-w-[560px]" onSubmit={submitSearch}>
           <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input

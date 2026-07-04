@@ -3,21 +3,27 @@ import { Link, useNavigate } from "react-router-dom";
 import { LockKeyhole, LogIn, Mail } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import AuthLayout from "../components/AuthLayout";
+import { dashboardPathForUser } from "../lib/authRoutes";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "", remember: true });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
+    if (submitting) return;
+
     setError("");
+    setSubmitting(true);
     try {
-      const user = await login(form.email, form.password);
-      navigate(user?.role === "admin" ? "/admin" : "/dashboard");
+      const user = await login(form.email, form.password, form.remember);
+      navigate(dashboardPathForUser(user), { replace: true });
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Login failed. Please try again.");
+      setSubmitting(false);
     }
   }
 
@@ -57,7 +63,10 @@ export default function Login() {
             <a href="#" className="font-bold text-[#0B3D91] hover:text-[#062B63]">Forgot password?</a>
           </div>
 
-          <button className="btn-primary h-12 w-full text-base"><LogIn size={19} /> Login</button>
+          <button className="btn-primary h-12 w-full text-base" type="submit" disabled={submitting}>
+            <LogIn size={19} />
+            {submitting ? "Logging in..." : "Login"}
+          </button>
         </form>
 
         <p className="mt-7 text-center text-sm text-slate-500">
