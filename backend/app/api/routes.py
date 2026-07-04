@@ -9,7 +9,7 @@ from app.api.deps import require_admin, require_approved
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.entities import AccomplishmentReport, CompletedPaper, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
-from app.schemas.dto import AccomplishmentOut, CompletedPaperOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
+from app.schemas.dto import AccomplishmentOut, CompletedPaperOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationBulkAction, NotificationBulkReadAction, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ResearchBulkDelete, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
 from app.core.config import get_settings
@@ -585,6 +585,29 @@ def repository(
     if submission_year:
         query = query.filter(ResearchSubmission.submission_year == submission_year)
     return [_submission_out(item) for item in query.order_by(ResearchSubmission.title).all()]
+
+
+@router.delete("/research/bulk")
+def delete_research_bulk(payload: ResearchBulkDelete, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    research_ids = list(dict.fromkeys(payload.research_ids))
+    if not research_ids:
+        return {"ok": True, "deleted": 0}
+
+    submissions = db.query(ResearchSubmission).filter(
+        ResearchSubmission.id.in_(research_ids),
+        ResearchSubmission.submission_type == "research",
+    ).all()
+    file_paths = [submission.file_path for submission in submissions]
+    for submission in submissions:
+        db.query(AccomplishmentReport).filter(AccomplishmentReport.source_submission_id == submission.id).update(
+            {AccomplishmentReport.source_submission_id: None},
+            synchronize_session=False,
+        )
+        db.delete(submission)
+    db.commit()
+    for file_path in file_paths:
+        delete_file(file_path)
+    return {"ok": True, "deleted": len(submissions)}
 
 
 @router.delete("/research/{research_id}")
@@ -1199,6 +1222,43 @@ def unread_notifications(db: Session = Depends(get_db), user: User = Depends(req
         Notification.is_read.is_(False),
     ).scalar()
     return NotificationCountOut(unread_count=count or 0)
+
+
+@router.delete("/notifications/bulk")
+def delete_notifications_bulk(payload: NotificationBulkAction, db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    notification_ids = list(dict.fromkeys(payload.notification_ids))
+    if not notification_ids:
+        return {"ok": True, "deleted": 0}
+    query = db.query(Notification).filter(
+        Notification.user_id == user.id,
+        Notification.id.in_(notification_ids),
+    )
+    deleted = query.delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "deleted": deleted}
+
+
+@router.patch("/notifications/bulk-read")
+def update_notifications_read_state(payload: NotificationBulkReadAction, db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    notification_ids = list(dict.fromkeys(payload.notification_ids))
+    if not notification_ids:
+        return {"ok": True, "updated": 0}
+    updated = db.query(Notification).filter(
+        Notification.user_id == user.id,
+        Notification.id.in_(notification_ids),
+    ).update({Notification.is_read: payload.is_read}, synchronize_session=False)
+    db.commit()
+    return {"ok": True, "updated": updated}
+
+
+@router.delete("/notifications/{notification_id}")
+def delete_notification(notification_id: int, db: Session = Depends(get_db), user: User = Depends(require_approved)):
+    item = db.get(Notification, notification_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
 
 
 @router.patch("/notifications/{notification_id}/read", response_model=NotificationOut)

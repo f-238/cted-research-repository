@@ -36,9 +36,19 @@ export const api = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }),
+  patchJson: (path, body) => request(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }),
   postForm: (path, form) => request(path, { method: "POST", body: form }),
   patchForm: (path, form) => request(path, { method: "PATCH", body: form }),
-  del: (path) => request(path, { method: "DELETE" })
+  del: (path) => request(path, { method: "DELETE" }),
+  delJson: (path, body) => request(path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  })
 };
 
 export async function openSignedUrl(path) {

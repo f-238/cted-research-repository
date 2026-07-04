@@ -93,6 +93,18 @@ class ReviewCreate(BaseModel):
     remarks: str = Field(min_length=1)
 
 
+class NotificationBulkAction(BaseModel):
+    notification_ids: list[int]
+
+
+class NotificationBulkReadAction(NotificationBulkAction):
+    is_read: bool
+
+
+class ResearchBulkDelete(BaseModel):
+    research_ids: list[int]
+
+
 class TemplateOut(BaseModel):
     id: int
     title: str
