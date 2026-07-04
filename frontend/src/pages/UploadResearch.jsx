@@ -35,6 +35,7 @@ const typeLabels = {
 
 export default function UploadResearch() {
   const [courses, setCourses] = useState([]);
+  const [submissionSettings, setSubmissionSettings] = useState({ accepted_file_types: { pdf: true, docx: true }, max_upload_size_mb: 25 });
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState(null);
   const [form, setForm] = useState({
@@ -51,20 +52,38 @@ export default function UploadResearch() {
     file: null
   });
 
-  useEffect(() => { api.get("/api/courses").then(setCourses); }, []);
+  useEffect(() => {
+    api.get("/api/courses").then(setCourses);
+    api.get("/api/settings/public").then((data) => {
+      setSubmissionSettings(data.submissions || submissionSettings);
+      const defaults = data.academic_defaults || {};
+      const currentYear = new Date().getFullYear();
+      setForm((current) => ({
+        ...current,
+        school_year: current.school_year || defaults.current_school_year || "",
+        submission_year: current.submission_year || (defaults.auto_submission_year ? String(currentYear) : "")
+      }));
+    }).catch(() => {});
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
-    if (form.file && form.file.size > 20 * 1024 * 1024) {
-      setProgress("File exceeds the 20 MB upload limit.");
+    const maxUploadMb = Number(submissionSettings.max_upload_size_mb || 25);
+    const allowedExtensions = Object.entries(submissionSettings.accepted_file_types || { pdf: true, docx: true })
+      .filter(([, enabled]) => enabled)
+      .map(([key]) => key);
+    if (!allowedExtensions.length) allowedExtensions.push("pdf", "docx");
+    if (form.file && form.file.size > maxUploadMb * 1024 * 1024) {
+      setProgress(`File exceeds the ${maxUploadMb} MB upload limit.`);
       return;
     }
     if (!form.file) {
       setProgress("A PDF or DOCX file is required.");
       return;
     }
-    if (!["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(form.file.type) && !/\.(pdf|docx)$/i.test(form.file.name)) {
-      setProgress("Only PDF or DOCX files are accepted.");
+    const allowedPattern = new RegExp(`\\.(${allowedExtensions.join("|")})$`, "i");
+    if (!allowedPattern.test(form.file.name)) {
+      setProgress(`Only ${allowedExtensions.map((value) => value.toUpperCase()).join(" or ")} files are accepted.`);
       return;
     }
     setProgress("Uploading and checking format...");
@@ -102,8 +121,8 @@ export default function UploadResearch() {
         <input className="field" placeholder="Submission Year, e.g. 2026" type="number" value={form.submission_year} onChange={(e) => setForm({ ...form, submission_year: e.target.value })} required />
         <input className="field md:col-span-2" placeholder={typeLabels[form.submission_type].keywords} value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} required />
         <textarea className="field md:col-span-2" rows="5" placeholder={typeLabels[form.submission_type].abstract} value={form.abstract} onChange={(e) => setForm({ ...form, abstract: e.target.value })} required />
-        <input className="field md:col-span-2" type="file" accept=".docx,.pdf" onChange={(e) => setForm({ ...form, file: e.target.files[0] })} required />
-        <p className="md:col-span-2 text-xs font-semibold text-slate-500">Accepted files: PDF or DOCX, up to 20 MB.</p>
+        <input className="field md:col-span-2" type="file" accept={acceptedFileAccept(submissionSettings)} onChange={(e) => setForm({ ...form, file: e.target.files[0] })} required />
+        <p className="md:col-span-2 text-xs font-semibold text-slate-500">Accepted files: {acceptedFileLabel(submissionSettings)}, up to {submissionSettings.max_upload_size_mb || 25} MB.</p>
         <button className="btn-primary md:col-span-2"><UploadCloud size={18} /> Submit for Review</button>
       </form>
       {progress && <div className="mt-4 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{progress}</div>}
@@ -118,6 +137,20 @@ export default function UploadResearch() {
       )}
     </>
   );
+}
+
+function acceptedFileLabel(settings) {
+  return Object.entries(settings.accepted_file_types || { pdf: true, docx: true })
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key.toUpperCase())
+    .join(" or ") || "PDF or DOCX";
+}
+
+function acceptedFileAccept(settings) {
+  return Object.entries(settings.accepted_file_types || { pdf: true, docx: true })
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => `.${key}`)
+    .join(",");
 }
 
 function formatStatus(formatCheck) {

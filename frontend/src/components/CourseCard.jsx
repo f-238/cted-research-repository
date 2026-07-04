@@ -47,6 +47,7 @@ export function shortCourseName(name) {
   if (name.includes("Major in Culture and Arts")) return "BSED Culture and Arts";
   if (name.includes("Major in Physical Education")) return "BSED Physical Education";
   if (name.includes("Major in Social Studies")) return "BSED Social Studies";
+  if (name.includes("Major in Values Education")) return "BSED Values Education";
   if (name.includes("Elementary Education")) return "BEED";
   if (name.includes("Early Childhood Education")) return "BECED";
   return name;

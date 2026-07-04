@@ -36,6 +36,11 @@ export const api = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }),
+  putJson: (path, body) => request(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }),
   patchJson: (path, body) => request(path, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -59,4 +64,26 @@ export async function openSignedUrl(path) {
   } catch (err) {
     window.alert(err.message || "Unable to open this file.");
   }
+}
+
+export async function downloadFile(path, fallbackName) {
+  const token = getToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_URL}${path}`, { headers });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Download failed" }));
+    throw new Error(error.detail || "Download failed");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = match?.[1] || fallbackName || "download";
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

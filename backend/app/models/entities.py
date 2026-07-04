@@ -39,8 +39,18 @@ class Course(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(220), unique=True)
     code: Mapped[str] = mapped_column(String(40), unique=True)
+    department: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="Active", index=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
 
     submissions = relationship("ResearchSubmission", back_populates="course")
+
+
+class SystemSetting(Base, TimestampMixin):
+    __tablename__ = "system_settings"
+
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
 
 
 class ResearchSubmission(Base, TimestampMixin):

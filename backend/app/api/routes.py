@@ -1,7 +1,10 @@
 import json
+from io import BytesIO
 from datetime import date
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook, load_workbook
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -9,11 +12,12 @@ from app.api.deps import require_admin, require_approved
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.entities import AccomplishmentReport, CompletedPaper, Course, FormatCheckResult, Notification, ResearchSubmission, ReviewRemark, Template, User
-from app.schemas.dto import AccomplishmentOut, CompletedPaperOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationBulkAction, NotificationBulkReadAction, NotificationCountOut, NotificationOut, ProgramYearOut, ReportSummary, ReportTrend, ResearchBulkDelete, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, TemplateOut, Token, UserCreate, UserOut
+from app.schemas.dto import AccomplishmentOut, CompletedPaperOut, CourseOut, DashboardStats, FacultyAccomplishmentSummaryOut, FacultyResearchItemOut, FacultyResearchResultsOut, NotificationBulkAction, NotificationBulkReadAction, NotificationCountOut, NotificationOut, ProgramCreate, ProgramOrderUpdate, ProgramYearOut, ProgramUpdate, ReportSummary, ReportTrend, ResearchBulkDelete, ReviewCreate, SearchResultOut, SearchResultsOut, SignedUrlOut, SubmissionOut, SystemSettingsPayload, TemplateOut, Token, UserCreate, UserOut
 from app.services.format_checker import check_document, serialize_check
 from app.services.notifications import notify, notify_admins
 from app.core.config import get_settings
 from app.services.storage import delete_file, signed_url, store_profile_image, store_upload
+from app.services.settings import DEFAULT_SETTINGS, get_administrative_settings, save_administrative_settings
 
 router = APIRouter(prefix="/api")
 
@@ -143,6 +147,19 @@ def _faculty_item(
     )
 
 
+def _configured_upload_policy(db: Session) -> tuple[set[str], int]:
+    submission_settings = get_administrative_settings(db).get("submissions", {})
+    file_types = submission_settings.get("accepted_file_types", {})
+    allowed = set()
+    if file_types.get("pdf", True):
+        allowed.add(".pdf")
+    if file_types.get("docx", True):
+        allowed.add(".docx")
+    if not allowed:
+        allowed = {".pdf", ".docx"}
+    return allowed, int(submission_settings.get("max_upload_size_mb") or 25)
+
+
 def _publish_approved_submission(db: Session, submission: ResearchSubmission) -> None:
     if submission.submission_type == "research":
         return
@@ -233,13 +250,218 @@ def me(user: User = Depends(require_approved)):
 
 
 @router.get("/courses", response_model=list[CourseOut])
-def courses(db: Session = Depends(get_db)):
-    return db.query(Course).order_by(Course.name).all()
+def courses(include_archived: bool = False, db: Session = Depends(get_db)):
+    query = db.query(Course)
+    if not include_archived:
+        query = query.filter(Course.status != "Archived")
+    return query.order_by(Course.display_order, Course.name).all()
+
+
+@router.get("/settings")
+def get_settings_page(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return {
+        "settings": get_administrative_settings(db),
+        "system_info": {
+            "institution": "Jose Rizal Memorial State University",
+            "campus": "Main Campus",
+            "college": "College of Teacher Education",
+            "system_name": "JRMSU CTED Research Repository",
+            "system_version": "1.0.0",
+            "database": "Supabase PostgreSQL",
+            "storage": "Supabase Storage",
+            "backend": "FastAPI",
+            "frontend": "React + Vite",
+            "hosting": "Render",
+            "last_backup_date": get_administrative_settings(db).get("backup", {}).get("last_backup_date", ""),
+        },
+    }
+
+
+@router.get("/settings/public")
+def get_public_settings(db: Session = Depends(get_db)):
+    settings = get_administrative_settings(db)
+    return {
+        "submissions": settings.get("submissions", {}),
+        "academic_defaults": settings.get("academic_defaults", {}),
+        "branding": settings.get("branding", {}),
+    }
+
+
+@router.put("/settings")
+def update_settings_page(payload: SystemSettingsPayload, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return {"settings": save_administrative_settings(db, payload.settings)}
+
+
+@router.post("/settings/reset")
+def reset_settings_page(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return {"settings": save_administrative_settings(db, DEFAULT_SETTINGS)}
+
+
+@router.get("/programs", response_model=list[CourseOut])
+def list_programs(include_archived: bool = True, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    query = db.query(Course)
+    if not include_archived:
+        query = query.filter(Course.status != "Archived")
+    return query.order_by(Course.display_order, Course.name).all()
+
+
+@router.post("/programs", response_model=CourseOut)
+def create_program(payload: ProgramCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    if db.query(Course).filter(func.lower(Course.code) == payload.code.lower()).first():
+        raise HTTPException(status_code=409, detail="Program code already exists.")
+    item = Course(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/programs/reorder")
+def reorder_programs(payload: ProgramOrderUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    for program in payload.programs:
+        item = db.get(Course, program.id)
+        if item:
+            item.display_order = program.display_order
+    db.commit()
+    return {"ok": True}
+
+
+@router.patch("/programs/{program_id}", response_model=CourseOut)
+def update_program(program_id: int, payload: ProgramUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    item = db.get(Course, program_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Program not found.")
+    existing = db.query(Course).filter(func.lower(Course.code) == payload.code.lower(), Course.id != program_id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Program code already exists.")
+    for key, value in payload.model_dump().items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/programs/{program_id}/archive", response_model=CourseOut)
+def archive_program(program_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    item = db.get(Course, program_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Program not found.")
+    item.status = "Archived"
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/programs/{program_id}/restore", response_model=CourseOut)
+def restore_program(program_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    item = db.get(Course, program_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Program not found.")
+    item.status = "Active"
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/programs/{program_id}")
+def delete_program(program_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    item = db.get(Course, program_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Program not found.")
+    has_history = db.query(ResearchSubmission.id).filter(ResearchSubmission.course_id == program_id).first() or db.query(CompletedPaper.id).filter(CompletedPaper.program_id == program_id).first()
+    if has_history:
+        raise HTTPException(status_code=409, detail="Archive this program instead because historical records still reference it.")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/programs/import")
+def import_programs(file: UploadFile = File(), db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Upload an Excel .xlsx file.")
+    workbook = load_workbook(BytesIO(file.file.read()))
+    sheet = workbook.active
+    imported = 0
+    for index, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=1):
+        code, name, department, status, display_order = (list(row) + [None] * 5)[:5]
+        if not code or not name:
+            continue
+        item = db.query(Course).filter(func.lower(Course.code) == str(code).lower()).first()
+        if not item:
+            item = Course(code=str(code).strip(), name=str(name).strip())
+            db.add(item)
+        item.name = str(name).strip()
+        item.department = str(department).strip() if department else None
+        item.status = str(status or "Active").strip()
+        item.display_order = int(display_order or index)
+        imported += 1
+    db.commit()
+    return {"ok": True, "imported": imported}
+
+
+@router.get("/programs/export")
+def export_programs(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Programs"
+    sheet.append(["Program Code", "Program Name", "Department", "Status", "Display Order"])
+    for item in db.query(Course).order_by(Course.display_order, Course.name).all():
+        sheet.append([item.code, item.name, item.department or "", item.status, item.display_order])
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=cted-programs.xlsx"},
+    )
+
+
+@router.get("/maintenance/database-backup")
+def download_database_backup(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    payload = {
+        "settings": get_administrative_settings(db),
+        "programs": [
+            {"id": item.id, "code": item.code, "name": item.name, "department": item.department, "status": item.status, "display_order": item.display_order}
+            for item in db.query(Course).order_by(Course.display_order, Course.name).all()
+        ],
+    }
+    return StreamingResponse(
+        BytesIO(json.dumps(payload, indent=2).encode("utf-8")),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=cted-database-backup.json"},
+    )
+
+
+@router.get("/maintenance/repository-metadata")
+def download_repository_metadata(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Research Metadata"
+    sheet.append(["Title", "Authors", "Adviser", "Program", "School Year", "Submission Year", "Status"])
+    for item in _submission_query(db).order_by(ResearchSubmission.created_at.desc()).all():
+        sheet.append([item.title, item.authors, item.adviser, item.course.name if item.course else "", item.school_year, item.submission_year, item.status])
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=repository-metadata.xlsx"},
+    )
+
+
+@router.post("/maintenance/restore")
+def restore_database_backup(file: UploadFile = File(), admin: User = Depends(require_admin)):
+    return {"ok": True, "message": "Backup file received. Automated restore should be performed by the deployment administrator."}
+
+
 
 
 @router.get("/dashboard/course-stats", response_model=list[DashboardStats])
 def course_stats(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    courses = db.query(Course).order_by(Course.name).all()
+    courses = db.query(Course).order_by(Course.display_order, Course.name).all()
     output = []
     for course in courses:
         rows = db.query(ResearchSubmission.status, func.count(ResearchSubmission.id)).filter(
@@ -489,7 +711,8 @@ def upload_submission(
 ):
     if submission_type not in {"research", "presentation", "publication", "utilization"}:
         raise HTTPException(status_code=400, detail="Invalid submission type.")
-    stored = store_upload(file, "research", {".docx", ".pdf"})
+    allowed_uploads, max_upload_size_mb = _configured_upload_policy(db)
+    stored = store_upload(file, "research", allowed_uploads, max_upload_size_mb)
     submission = ResearchSubmission(
         submission_type=submission_type,
         title=title,
@@ -742,7 +965,8 @@ def update_submission(
     submission.abstract = abstract
     if file:
         old_key = submission.file_path
-        stored = store_upload(file, "research", {".docx", ".pdf"})
+        allowed_uploads, max_upload_size_mb = _configured_upload_policy(db)
+        stored = store_upload(file, "research", allowed_uploads, max_upload_size_mb)
         submission.file_path = stored.storage_key
         submission.original_filename = stored.original_filename
         submission.file_type = stored.file_type
@@ -969,7 +1193,8 @@ def create_completed_paper(
     file_size = None
     upload = file or uploaded_file
     if upload:
-        stored = store_upload(upload, "accomplishments", {".pdf", ".docx"})
+        allowed_uploads, max_upload_size_mb = _configured_upload_policy(db)
+        stored = store_upload(upload, "accomplishments", allowed_uploads, max_upload_size_mb)
         path = stored.storage_key
         filename = stored.original_filename
         mime_type = stored.mime_type
@@ -1024,7 +1249,8 @@ def update_completed_paper(
     upload = file or uploaded_file
     if upload:
         old_key = item.file_path
-        stored = store_upload(upload, "accomplishments", {".pdf", ".docx"})
+        allowed_uploads, max_upload_size_mb = _configured_upload_policy(db)
+        stored = store_upload(upload, "accomplishments", allowed_uploads, max_upload_size_mb)
         item.file_path = stored.storage_key
         item.original_filename = stored.original_filename
         item.mime_type = stored.mime_type
@@ -1078,7 +1304,8 @@ def create_template(title: str = Form(), instructions: str = Form(), file: Uploa
     path = filename = None
     mime_type = file_size = None
     if file:
-        stored = store_upload(file, "templates", {".docx", ".pdf"})
+        allowed_uploads, max_upload_size_mb = _configured_upload_policy(db)
+        stored = store_upload(file, "templates", allowed_uploads, max_upload_size_mb)
         path = stored.storage_key
         filename = stored.original_filename
         mime_type = stored.mime_type

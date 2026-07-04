@@ -98,6 +98,7 @@ function shortProgram(name) {
   if (name.includes("Major in Filipino")) return "BSED Filipino";
   if (name.includes("Major in Culture and Arts")) return "BSED Culture and Arts";
   if (name.includes("Major in Physical Education")) return "BSED Physical Education";
+  if (name.includes("Major in Values Education")) return "BSED Values Education";
   if (name.includes("Elementary Education")) return "BEED";
   if (name.includes("Early Childhood Education")) return "BECED";
   return name;

@@ -16,6 +16,7 @@ def run_startup_migrations(engine: Engine) -> None:
     _add_file_metadata_columns(engine, inspector, table_names)
     _add_user_profile_image_column(engine, inspector, table_names)
     _add_submission_workflow_columns(engine, inspector, table_names)
+    _add_program_management_columns(engine, inspector, table_names)
     _make_user_references_nullable(engine, inspector, table_names)
 
     if not engine.url.get_backend_name().startswith("sqlite"):
@@ -127,6 +128,21 @@ def _add_submission_workflow_columns(engine: Engine, inspector, table_names: lis
             columns = {column["name"] for column in inspector.get_columns("accomplishment_reports")}
             if "source_submission_id" not in columns:
                 connection.execute(text("ALTER TABLE accomplishment_reports ADD COLUMN source_submission_id INTEGER"))
+
+
+def _add_program_management_columns(engine: Engine, inspector, table_names: list[str]) -> None:
+    if "courses" not in table_names:
+        return
+    columns = {column["name"] for column in inspector.get_columns("courses")}
+    with engine.begin() as connection:
+        if "department" not in columns:
+            connection.execute(text("ALTER TABLE courses ADD COLUMN department VARCHAR(160)"))
+        if "status" not in columns:
+            connection.execute(text("ALTER TABLE courses ADD COLUMN status VARCHAR(40)"))
+            connection.execute(text("UPDATE courses SET status = 'Active' WHERE status IS NULL"))
+        if "display_order" not in columns:
+            connection.execute(text("ALTER TABLE courses ADD COLUMN display_order INTEGER"))
+            connection.execute(text("UPDATE courses SET display_order = id WHERE display_order IS NULL"))
 
 
 def _make_user_references_nullable(engine: Engine, inspector, table_names: list[str]) -> None:

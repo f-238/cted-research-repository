@@ -39,9 +39,37 @@ class CourseOut(BaseModel):
     id: int
     name: str
     code: str
+    department: str | None = None
+    status: str = "Active"
+    display_order: int = 0
 
     class Config:
         from_attributes = True
+
+
+class ProgramCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=2, max_length=220)
+    department: str | None = None
+    status: str = "Active"
+    display_order: int = 0
+
+
+class ProgramUpdate(ProgramCreate):
+    pass
+
+
+class ProgramOrderItem(BaseModel):
+    id: int
+    display_order: int
+
+
+class ProgramOrderUpdate(BaseModel):
+    programs: list[ProgramOrderItem]
+
+
+class SystemSettingsPayload(BaseModel):
+    settings: dict
 
 
 class FormatCheckOut(BaseModel):

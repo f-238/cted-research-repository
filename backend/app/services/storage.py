@@ -48,14 +48,14 @@ def _content_type(filename: str, fallback: str | None = None) -> str:
     return fallback or guessed or "application/octet-stream"
 
 
-def store_upload(upload: UploadFile, folder: str, allowed: set[str]) -> StoredUpload:
+def store_upload(upload: UploadFile, folder: str, allowed: set[str], max_size_mb: int | None = None) -> StoredUpload:
     filename = upload.filename or "uploaded-file"
     suffix = Path(filename).suffix.lower()
     if suffix not in allowed:
         raise HTTPException(status_code=400, detail=f"Only {', '.join(sorted(allowed))} files are accepted.")
 
     settings = get_settings()
-    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    max_bytes = (max_size_mb or settings.max_upload_size_mb) * 1024 * 1024
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     temp_path = temp.name
     total = 0
@@ -64,7 +64,7 @@ def store_upload(upload: UploadFile, folder: str, allowed: set[str]) -> StoredUp
             while chunk := upload.file.read(1024 * 1024):
                 total += len(chunk)
                 if total > max_bytes:
-                    raise HTTPException(status_code=413, detail=f"File exceeds the {settings.max_upload_size_mb} MB upload limit.")
+                    raise HTTPException(status_code=413, detail=f"File exceeds the {max_size_mb or settings.max_upload_size_mb} MB upload limit.")
                 temp.write(chunk)
 
         mime_type = _content_type(filename, upload.content_type)

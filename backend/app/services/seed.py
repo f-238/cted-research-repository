@@ -1,27 +1,28 @@
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import hash_password
-from app.models.entities import Course, Template, User
+from app.models.entities import Course, SystemSetting, Template, User
+from app.services.settings import DEFAULT_SETTINGS, SETTINGS_KEY, save_administrative_settings
 
 COURSES = [
-    ("Bachelor of Secondary Education Major in English", "BSED-ENG"),
-    ("Bachelor of Secondary Education Major in Mathematics", "BSED-MATH"),
-    ("Bachelor of Secondary Education Major in Science", "BSED-SCI"),
-    ("Bachelor of Secondary Education Major in Filipino", "BSED-FIL"),
-    ("Bachelor of Secondary Education Major in Social Studies", "BSED-SS"),
-    ("Bachelor of Secondary Education Major in Culture and Arts", "BSED-CA"),
-    ("Bachelor of Secondary Education Major in Physical Education", "BSED-PE"),
     ("Bachelor of Elementary Education", "BEED"),
     ("Bachelor of Early Childhood Education", "BECED"),
+    ("BSED English", "BSED-ENG"),
+    ("BSED Filipino", "BSED-FIL"),
+    ("BSED Mathematics", "BSED-MATH"),
+    ("BSED Science", "BSED-SCI"),
+    ("BSED Social Studies", "BSED-SS"),
+    ("BSED Values Education", "BSED-VE"),
+    ("BSED Physical Education", "BSED-PE"),
 ]
 
 
 def seed_database(db: Session) -> None:
     settings = get_settings()
     existing_codes = {course.code for course in db.query(Course).all()}
-    for name, code in COURSES:
+    for index, (name, code) in enumerate(COURSES, start=1):
         if code not in existing_codes:
-            db.add(Course(name=name, code=code))
+            db.add(Course(name=name, code=code, status="Active", display_order=index))
     legacy_admin = db.query(User).filter(User.email == "admin@cte.local").first()
     current_admin = db.query(User).filter(User.email == settings.admin_email).first()
     if legacy_admin and current_admin:
@@ -46,4 +47,6 @@ def seed_database(db: Session) -> None:
             ),
             is_active=True,
         ))
+    if db.get(SystemSetting, SETTINGS_KEY) is None:
+        save_administrative_settings(db, DEFAULT_SETTINGS)
     db.commit()
