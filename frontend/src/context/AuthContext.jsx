@@ -9,18 +9,24 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     if (!getToken()) {
       setLoading(false);
-      return;
+      return () => { active = false; };
     }
 
     api.get("/api/auth/me")
-      .then(setUser)
+      .then((currentUser) => {
+        if (active) setUser(currentUser);
+      })
       .catch(() => {
         persistToken(null);
-        setUser(null);
+        if (active) setUser(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   async function refreshUser() {
@@ -30,14 +36,13 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password, remember = true) {
-    setLoading(true);
     const form = new FormData();
     form.append("email", email);
     form.append("password", password);
     try {
       const data = await api.postForm("/api/auth/login", form);
       persistToken(data.access_token, remember);
-      const currentUser = await api.get("/api/auth/me");
+      const currentUser = data.user;
       flushSync(() => {
         setUser(currentUser);
         setLoading(false);

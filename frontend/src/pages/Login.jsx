@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LockKeyhole, LogIn, Mail } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -6,11 +6,17 @@ import AuthLayout from "../components/AuthLayout";
 import { dashboardPathForUser } from "../lib/authRoutes";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { user, loading, login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "", remember: true });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate(dashboardPathForUser(user), { replace: true });
+    }
+  }, [loading, navigate, user]);
 
   async function submit(e) {
     e.preventDefault();
@@ -23,8 +29,19 @@ export default function Login() {
       navigate(dashboardPathForUser(user), { replace: true });
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
+    } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading) {
+    return (
+      <AuthLayout>
+        <section className="w-full max-w-[500px] rounded-[24px] border border-[#E5E7EB] bg-white p-8 shadow-[0_24px_70px_rgba(7,27,77,0.12)]">
+          <p className="text-sm font-semibold text-slate-500">Checking your session...</p>
+        </section>
+      </AuthLayout>
+    );
   }
 
   return (

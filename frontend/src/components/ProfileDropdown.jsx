@@ -27,7 +27,6 @@ export default function ProfileDropdown() {
   }, []);
 
   function handleLogout() {
-    localStorage.clear();
     logout();
     navigate("/login", { replace: true });
   }

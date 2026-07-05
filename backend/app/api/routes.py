@@ -461,7 +461,7 @@ def restore_database_backup(file: UploadFile = File(), admin: User = Depends(req
 
 @router.get("/dashboard/course-stats", response_model=list[DashboardStats])
 def course_stats(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    courses = db.query(Course).order_by(Course.display_order, Course.name).all()
+    courses = db.query(Course).filter(Course.status != "Archived").order_by(Course.display_order, Course.name).all()
     output = []
     for course in courses:
         rows = db.query(ResearchSubmission.status, func.count(ResearchSubmission.id)).filter(

@@ -19,9 +19,8 @@ COURSES = [
 
 def seed_database(db: Session) -> None:
     settings = get_settings()
-    existing_codes = {course.code for course in db.query(Course).all()}
-    for index, (name, code) in enumerate(COURSES, start=1):
-        if code not in existing_codes:
+    if db.query(Course).count() == 0:
+        for index, (name, code) in enumerate(COURSES, start=1):
             db.add(Course(name=name, code=code, status="Active", display_order=index))
     legacy_admin = db.query(User).filter(User.email == "admin@cte.local").first()
     current_admin = db.query(User).filter(User.email == settings.admin_email).first()

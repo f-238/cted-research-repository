@@ -57,6 +57,7 @@ export default function Settings() {
     try {
       const data = await api.putJson("/api/settings", { settings });
       setSettings(data.settings || settings);
+      await load();
       setMessage("Settings saved successfully.");
     } catch (err) {
       setError(err.message || "Unable to save settings.");
@@ -70,6 +71,7 @@ export default function Settings() {
     try {
       const data = await api.postJson("/api/settings/reset", {});
       setSettings(data.settings || defaultSettings);
+      await load();
       setMessage("Settings reset to default.");
     } catch (err) {
       setError(err.message || "Unable to reset settings.");
