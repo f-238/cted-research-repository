@@ -851,7 +851,7 @@ def delete_research(research_id: int, db: Session = Depends(get_db), _: User = D
 
 
 @router.get("/programs/{program_id}/years", response_model=list[ProgramYearOut])
-def program_years(program_id: int, db: Session = Depends(get_db), _: User = Depends(require_approved)):
+def program_years(program_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     rows = db.query(
         ResearchSubmission.school_year,
         ResearchSubmission.submission_year,
@@ -882,7 +882,7 @@ def program_years(program_id: int, db: Session = Depends(get_db), _: User = Depe
 
 
 @router.get("/programs/{program_id}/years/{school_year}/researches", response_model=list[SubmissionOut])
-def program_year_researches(program_id: int, school_year: str, db: Session = Depends(get_db), _: User = Depends(require_approved)):
+def program_year_researches(program_id: int, school_year: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     decoded_school_year = school_year.replace("_", "-")
     query = _submission_query(db).filter(
         ResearchSubmission.course_id == program_id,
@@ -1295,7 +1295,7 @@ def download_completed_paper(paper_id: int, db: Session = Depends(get_db), user:
 
 
 @router.get("/templates", response_model=list[TemplateOut])
-def templates(db: Session = Depends(get_db)):
+def templates(db: Session = Depends(get_db), _: User = Depends(require_approved)):
     return db.query(Template).order_by(Template.created_at.desc()).all()
 
 
@@ -1319,7 +1319,7 @@ def create_template(title: str = Form(), instructions: str = Form(), file: Uploa
 
 
 @router.get("/templates/{template_id}/download", response_model=SignedUrlOut)
-def download_template(template_id: int, db: Session = Depends(get_db)):
+def download_template(template_id: int, db: Session = Depends(get_db), _: User = Depends(require_approved)):
     template = db.get(Template, template_id)
     if not template or not template.file_path:
         raise HTTPException(status_code=404, detail="Template file not found.")
